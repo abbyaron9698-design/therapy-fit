@@ -1,0 +1,35 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Provider {
+  id                 String   @id
+  name               String
+
+  address            String
+  city               String
+  state              String
+  zip                String
+
+  telehealth         Boolean  @default(false)
+  acceptingNewClients Boolean @default(false)
+
+  // SQLite: use Json to store arrays
+  insurance          Json
+  modalities         Json
+
+  website            String?
+  parkingUrl         String?
+  notes              String?
+  sourceUrl          String?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
