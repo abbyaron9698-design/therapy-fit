@@ -11,8 +11,10 @@ type FeedbackContext = {
 
 export function FeedbackPanel({
   context,
+  showContextLine,
 }: {
   context: FeedbackContext;
+  showContextLine?: boolean;
 }) {
   const [topic, setTopic] = useState("");
   const [message, setMessage] = useState("");
@@ -29,13 +31,18 @@ export function FeedbackPanel({
     return parts.join(" | ");
   }, [context]);
 
+  // Default behavior:
+  // - show context line everywhere EXCEPT the global footer
+  const shouldShowContextLine =
+    typeof showContextLine === "boolean"
+      ? showContextLine
+      : context.sectionId !== "global-footer";
+
   const mailtoHref = useMemo(() => {
     const subject = encodeURIComponent("Therapy Fit feedback");
     const body = encodeURIComponent(
       `Hi Therapy Fit,\n\nContext: ${contextText}\n\nTopic (optional): ${topic}\n\nFeedback:\n${message}\n`
     );
-
-    // You can change this to a dedicated inbox later.
     return `mailto:hello@therapyfit.app?subject=${subject}&body=${body}`;
   }, [contextText, topic, message]);
 
@@ -68,9 +75,15 @@ export function FeedbackPanel({
         />
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-[11px] text-slate-500">
-            Context: <span className="font-medium">{contextText}</span>
-          </div>
+          {shouldShowContextLine ? (
+            <div className="text-[11px] text-slate-500">
+              Context: <span className="font-medium">{contextText}</span>
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-500">
+              This feedback includes page info automatically.
+            </div>
+          )}
 
           <a
             href={mailtoHref}

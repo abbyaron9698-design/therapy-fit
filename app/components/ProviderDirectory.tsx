@@ -9,6 +9,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PROVIDERS, type Provider } from "../../lib/providerData";
 import type { ModalityId } from "../../lib/quizData";
 import { MODALITY_LABELS } from "../../lib/quizData";
@@ -32,6 +33,7 @@ type Ctx = {
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   insuranceOptions: string[];
   languageOptions: LanguageOption[];
+  hydrated: boolean;
 };
 
 const ProviderFiltersContext = createContext<Ctx | null>(null);
@@ -41,7 +43,7 @@ function uniq<T>(arr: T[]): T[] {
 }
 
 function normalizeZipInput(raw: string) {
-  return raw.replace(/[^\d]/g, "").slice(0, 5);
+  return (raw ?? "").replace(/[^\d]/g, "").slice(0, 5);
 }
 
 function zipPrefix3(zip: string) {
@@ -55,6 +57,87 @@ function zipMode(zip: string): "none" | "prefix3" | "exact5" {
   if (z.length === 5) return "exact5";
   if (z.length >= 3) return "prefix3";
   return "none";
+}
+
+/* -----------------------------
+   Persist filters across /results?contact=1
+------------------------------ */
+
+const FILTERS_STORAGE_KEY = "tf_provider_filters_v1";
+
+function safeParseJSON<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeFilters(input: any): Filters | null {
+  if (!input || typeof input !== "object") return null;
+
+  const zip = typeof input.zip === "string" ? normalizeZipInput(input.zip) : "";
+
+  const insurance =
+    Array.isArray(input.insurance) &&
+    input.insurance.every((x: any) => typeof x === "string")
+      ? (input.insurance as string[])
+      : [];
+
+  const telehealthOnly = Boolean(input.telehealthOnly);
+
+  const acceptingOnly =
+    typeof input.acceptingOnly === "boolean" ? input.acceptingOnly : true;
+
+  const language =
+    typeof input.language === "string"
+      ? (input.language as LanguageOption)
+      : ("Any" as LanguageOption);
+
+  return {
+    zip,
+    insurance,
+    telehealthOnly,
+    acceptingOnly,
+    language,
+  };
+}
+
+function loadStoredFilters(): Filters | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.sessionStorage.getItem(FILTERS_STORAGE_KEY);
+  return sanitizeFilters(safeParseJSON<any>(raw));
+}
+
+function storeFilters(filters: Filters) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+  } catch {
+    // ignore
+  }
+}
+
+function clearStoredFilters() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(FILTERS_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * ✅ Define when the user has actually "searched"
+ * (So we don't auto-populate providers on page load.)
+ */
+function hasUserSearched(filters: Filters) {
+  const z = normalizeZipInput(filters.zip);
+  const zipReady = z.length >= 3; // 606 or 60611
+  const insuranceReady = filters.insurance.length > 0;
+  const languageReady = filters.language !== "Any";
+  return zipReady || insuranceReady || languageReady;
 }
 
 /**
@@ -86,13 +169,32 @@ export function ProviderFiltersProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [filters, setFilters] = useState<Filters>({
+  const DEFAULTS: Filters = {
     zip: "",
     insurance: [],
     telehealthOnly: false,
     acceptingOnly: true,
     language: "Any",
-  });
+  };
+
+  // ✅ SSR-safe: server + first client render match
+  const [filters, setFilters] = useState<Filters>(DEFAULTS);
+
+  // ✅ Prevent writing defaults into storage before we’ve read storage
+  const [hydrated, setHydrated] = useState(false);
+
+  // ✅ After mount (client only), load stored filters
+  useEffect(() => {
+    setHydrated(true);
+    const stored = loadStoredFilters();
+    if (stored) setFilters(stored);
+  }, []);
+
+  // ✅ Persist filters only after hydration
+  useEffect(() => {
+    if (!hydrated) return;
+    storeFilters(filters);
+  }, [filters, hydrated]);
 
   const insuranceOptions = useMemo(() => {
     const ins = PROVIDERS.flatMap((p) => p.insurance ?? []);
@@ -107,12 +209,15 @@ export function ProviderFiltersProvider({
       .filter((l) => !known.has(l))
       .sort((a, b) => a.localeCompare(b));
 
-    return [...LANGUAGE_OPTIONS, ...(extras as unknown as LanguageOption[])] as LanguageOption[];
+    return [
+      ...LANGUAGE_OPTIONS,
+      ...(extras as unknown as LanguageOption[]),
+    ] as LanguageOption[];
   }, []);
 
   const value = useMemo(
-    () => ({ filters, setFilters, insuranceOptions, languageOptions }),
-    [filters, insuranceOptions, languageOptions]
+    () => ({ filters, setFilters, insuranceOptions, languageOptions, hydrated }),
+    [filters, insuranceOptions, languageOptions, hydrated]
   );
 
   return (
@@ -206,17 +311,35 @@ function InsuranceMultiSelect({
 }
 
 export function ProviderFiltersBar() {
-  const { filters, setFilters, insuranceOptions, languageOptions } =
-    useProviderFilters();
+  const {
+    filters,
+    setFilters,
+    insuranceOptions,
+    languageOptions,
+    hydrated,
+  } = useProviderFilters();
+
+  // ✅ During hydration, force UI to render the same markup as SSR
+  const uiFilters: Filters = hydrated
+    ? filters
+    : {
+        zip: "",
+        insurance: [],
+        telehealthOnly: false,
+        acceptingOnly: true,
+        language: "Any",
+      };
 
   function clearAll() {
-    setFilters({
+    const next: Filters = {
       zip: "",
       insurance: [],
       telehealthOnly: false,
       acceptingOnly: true,
       language: "Any",
-    });
+    };
+    setFilters(next);
+    clearStoredFilters();
     track("filters_clear_all");
   }
 
@@ -228,8 +351,8 @@ export function ProviderFiltersBar() {
             Provider filters
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            ZIP helps sort by proximity (closer first). It does not remove
-            providers.
+            Add ZIP (3–5 digits) and/or insurance to show providers. ZIP also
+            sorts by proximity (closer first).
           </div>
         </div>
 
@@ -246,8 +369,9 @@ export function ProviderFiltersBar() {
         <label className="grid gap-1">
           <span className="text-xs font-medium text-slate-700">ZIP</span>
           <input
-            value={filters.zip}
+            value={uiFilters.zip}
             onChange={(e) => {
+              if (!hydrated) return;
               const nextZip = normalizeZipInput(e.target.value);
               setFilters((f) => ({ ...f, zip: nextZip }));
               track("filter_zip_change", {
@@ -265,8 +389,9 @@ export function ProviderFiltersBar() {
 
         <InsuranceMultiSelect
           options={insuranceOptions}
-          selected={filters.insurance}
+          selected={uiFilters.insurance}
           onChange={(next) => {
+            if (!hydrated) return;
             setFilters((f) => ({ ...f, insurance: next }));
             track("filter_insurance_change", { count: next.length });
           }}
@@ -275,8 +400,9 @@ export function ProviderFiltersBar() {
         <label className="grid gap-1">
           <span className="text-xs font-medium text-slate-700">Language</span>
           <select
-            value={filters.language}
+            value={uiFilters.language}
             onChange={(e) => {
+              if (!hydrated) return;
               const next = e.target.value as LanguageOption;
               setFilters((f) => ({ ...f, language: next }));
               track("filter_language_change", { language: next });
@@ -297,8 +423,9 @@ export function ProviderFiltersBar() {
         <label className="flex items-center gap-2 rounded-xl border px-3 py-2">
           <input
             type="checkbox"
-            checked={filters.telehealthOnly}
+            checked={uiFilters.telehealthOnly}
             onChange={(e) => {
+              if (!hydrated) return;
               setFilters((f) => ({ ...f, telehealthOnly: e.target.checked }));
               track("filter_telehealth_toggle", { on: e.target.checked });
             }}
@@ -309,8 +436,9 @@ export function ProviderFiltersBar() {
         <label className="flex items-center gap-2 rounded-xl border px-3 py-2">
           <input
             type="checkbox"
-            checked={filters.acceptingOnly}
+            checked={uiFilters.acceptingOnly}
             onChange={(e) => {
+              if (!hydrated) return;
               setFilters((f) => ({ ...f, acceptingOnly: e.target.checked }));
               track("filter_accepting_toggle", { on: e.target.checked });
             }}
@@ -480,7 +608,10 @@ function ProviderCard({
             target="_blank"
             rel="noreferrer"
             onClick={() =>
-              track("provider_click_directions", { providerId: p.id, modalityId })
+              track("provider_click_directions", {
+                providerId: p.id,
+                modalityId,
+              })
             }
           >
             Directions →
@@ -557,7 +688,29 @@ function sortProviders(list: Provider[], userZip: string) {
 }
 
 function computeProvidersForModality(modalityId: ModalityId, filters: Filters) {
-  const modalityOnly = PROVIDERS.filter((p) => p.modalities?.includes(modalityId));
+  const modalityOnly = PROVIDERS.filter((p) =>
+    p.modalities?.includes(modalityId)
+  );
+
+  const z = normalizeZipInput(filters.zip);
+  const mode = zipMode(z);
+
+  // ✅ don't show starter lists until user "searches"
+  const searchReady = hasUserSearched(filters);
+  if (!searchReady) {
+    return {
+      filtered: [] as Provider[],
+      featured: [] as Provider[],
+      shown: [] as Provider[],
+      zipMode: mode,
+      hasExactZip: false,
+      fallbackLevel: "none" as FallbackLevel,
+      fallbackShown: [] as Provider[],
+      effectiveTotal: 0,
+      effectiveShownCount: 0,
+      searchReady: false as const,
+    };
+  }
 
   function strictMatch(p: Provider) {
     if (filters.acceptingOnly && !p.acceptingNewClients) return false;
@@ -568,10 +721,6 @@ function computeProvidersForModality(modalityId: ModalityId, filters: Filters) {
   }
 
   const strictBase = modalityOnly.filter(strictMatch);
-
-  const z = normalizeZipInput(filters.zip);
-  const mode = zipMode(z);
-
   const strictSorted = sortProviders(strictBase, z);
 
   let hasExactZip = false;
@@ -589,12 +738,10 @@ function computeProvidersForModality(modalityId: ModalityId, filters: Filters) {
   const organic = strictSorted.filter((p) => !featuredIds.has(p.id));
   const shown = organic.slice(0, 10);
 
-  // ✅ Fallback tiers if strict yields nothing
   let fallbackLevel: FallbackLevel = "none";
   let fallbackSorted: Provider[] = [];
 
   if (strictSorted.length === 0) {
-    // Tier A: relax insurance
     const relaxedInsurance = modalityOnly.filter((p) => {
       if (filters.acceptingOnly && !p.acceptingNewClients) return false;
       if (filters.telehealthOnly && !p.telehealth) return false;
@@ -604,7 +751,6 @@ function computeProvidersForModality(modalityId: ModalityId, filters: Filters) {
     fallbackSorted = sortProviders(relaxedInsurance, z);
     fallbackLevel = "relaxed_insurance";
 
-    // Tier B: relax accepting
     if (fallbackSorted.length === 0) {
       const relaxedAccepting = modalityOnly.filter((p) => {
         if (filters.telehealthOnly && !p.telehealth) return false;
@@ -615,7 +761,6 @@ function computeProvidersForModality(modalityId: ModalityId, filters: Filters) {
       fallbackLevel = "relaxed_accepting";
     }
 
-    // Tier C: relax telehealth
     if (fallbackSorted.length === 0) {
       const relaxedTele = modalityOnly.filter((p) => {
         if (!matchesLanguage(p, filters.language)) return false;
@@ -625,7 +770,6 @@ function computeProvidersForModality(modalityId: ModalityId, filters: Filters) {
       fallbackLevel = "relaxed_telehealth";
     }
 
-    // Tier D: absolute starter list for the modality
     if (fallbackSorted.length === 0) {
       fallbackSorted = sortProviders(modalityOnly, z);
       fallbackLevel = "starter_list";
@@ -642,10 +786,11 @@ function computeProvidersForModality(modalityId: ModalityId, filters: Filters) {
     hasExactZip,
     fallbackLevel,
     fallbackShown,
-    // For counts / UI
     effectiveTotal: strictSorted.length || fallbackSorted.length,
-    effectiveShownCount:
-      (strictSorted.length ? shown.length + featured.length : fallbackShown.length),
+    effectiveShownCount: strictSorted.length
+      ? shown.length + featured.length
+      : fallbackShown.length,
+    searchReady: true as const,
   };
 }
 
@@ -654,8 +799,22 @@ function computeProvidersForModality(modalityId: ModalityId, filters: Filters) {
 ------------------------------ */
 
 function isValidEmail(s: string) {
-  // light validation; email provider will be stricter
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
+// ✅ FIX: make close button fixed so it cannot be clipped/hidden
+function CloseXButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Close"
+      title="Close"
+      className="fixed right-6 top-6 z-[10002] grid h-11 w-11 place-items-center rounded-2xl border border-slate-200 bg-white text-2xl leading-none font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+    >
+      ×
+    </button>
+  );
 }
 
 function EmailShortlistModal({
@@ -712,12 +871,17 @@ function EmailShortlistModal({
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/40 p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
-      <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-xl">
-        <div className="flex items-start justify-between gap-4 border-b px-6 py-5">
+      <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-xl">
+        <CloseXButton onClick={onClose} />
+
+        <div className="border-b px-6 py-5 pr-16">
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
               Save for later
@@ -729,14 +893,6 @@ function EmailShortlistModal({
               We’ll email you when this feature ships. (No clinical info.)
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-2xl border px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
-          >
-            Close
-          </button>
         </div>
 
         <div className="px-6 py-6">
@@ -796,10 +952,6 @@ function EmailShortlistModal({
   );
 }
 
-/**
- * ✅ MAIN EVENT: Contact Providers CTA + guided modal.
- * Put this ABOVE the directory on the Results page.
- */
 export function ProviderContactCTA({
   modalityId,
   heading = "Ready to reach out?",
@@ -807,6 +959,7 @@ export function ProviderContactCTA({
   scrollTargetId = "providers",
   toolkitHref,
   toolkitLabel = "Need help deciding? Toolkit →",
+  hideInline = false,
 }: {
   modalityId: ModalityId;
   heading?: string;
@@ -814,10 +967,49 @@ export function ProviderContactCTA({
   scrollTargetId?: string;
   toolkitHref?: string;
   toolkitLabel?: string;
+  hideInline?: boolean;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const { filters } = useProviderFilters();
   const [open, setOpen] = useState(false);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
+
+  function stripContactParamAndHash() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("contact");
+    url.hash = "";
+    router.replace(url.pathname + (url.search ? url.search : ""), {
+      scroll: false,
+    });
+  }
+
+  function closeModal() {
+    setOpen(false);
+    setEmailModalOpen(false);
+    stripContactParamAndHash();
+    track("providers_contact_close", { modalityId });
+  }
+
+  useEffect(() => {
+    const shouldOpen = searchParams?.get("contact") === "1";
+    if (!shouldOpen) return;
+
+    setOpen(true);
+    track("providers_contact_open_from_url", { modalityId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, modalityId]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") closeModal();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const computed = useMemo(
     () => computeProvidersForModality(modalityId, filters),
@@ -832,14 +1024,21 @@ export function ProviderContactCTA({
   );
 
   const candidates = useMemo(() => {
+    if (!computed.searchReady) return [] as Provider[];
     const strict = [...computed.featured, ...computed.shown].slice(0, 10);
     if (strict.length) return strict;
     return computed.fallbackShown.slice(0, 10);
-  }, [computed.featured, computed.shown, computed.fallbackShown]);
+  }, [
+    computed.searchReady,
+    computed.featured,
+    computed.shown,
+    computed.fallbackShown,
+  ]);
 
   const defaultSelected = useMemo(() => {
+    if (!computed.searchReady) return [] as string[];
     return candidates.slice(0, 2).map((p) => p.id);
-  }, [candidates]);
+  }, [computed.searchReady, candidates]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -848,9 +1047,10 @@ export function ProviderContactCTA({
   }, [defaultSelected]);
 
   const selectedProviders = useMemo(() => {
+    if (!computed.searchReady) return [] as Provider[];
     const set = new Set(selectedIds);
     return candidates.filter((p) => set.has(p.id));
-  }, [candidates, selectedIds]);
+  }, [computed.searchReady, candidates, selectedIds]);
 
   function toggle(id: string) {
     setSelectedIds((prev) =>
@@ -864,11 +1064,6 @@ export function ProviderContactCTA({
       modalityId,
       preselectedCount: selectedIds.length,
     });
-  }
-
-  function closeModal() {
-    setOpen(false);
-    track("providers_contact_close", { modalityId });
   }
 
   function scrollToProviders() {
@@ -887,7 +1082,6 @@ export function ProviderContactCTA({
       `I’m looking for therapy in the Chicagoland area and I’m interested in ${modalityLabel}.`
     );
 
-    // preference based on filter
     if (filters.telehealthOnly) {
       lines.push("I’m currently looking for telehealth only.");
     } else {
@@ -909,7 +1103,9 @@ export function ProviderContactCTA({
       "My availability is generally [weekday mornings / evenings / flexible], and I’m open to [telehealth / in-person / either]."
     );
     lines.push("");
-    lines.push("Do you have openings? If so, I’d love to schedule a brief consultation.");
+    lines.push(
+      "Do you have openings? If so, I’d love to schedule a brief consultation."
+    );
     lines.push("");
     lines.push("Thank you,");
     lines.push("[Your name]");
@@ -922,16 +1118,20 @@ export function ProviderContactCTA({
     lines.push(
       `I’m calling to ask about therapy availability. I’m interested in ${modalityLabel}.`
     );
-    if (filters.telehealthOnly) lines.push("I’m currently looking for telehealth only.");
+    if (filters.telehealthOnly)
+      lines.push("I’m currently looking for telehealth only.");
     else lines.push("I’m open to telehealth or in-person.");
     if (filters.zip) {
       const z = normalizeZipInput(filters.zip);
-      if (z.length >= 3) lines.push(`I’m near ZIP ${z}${z.length === 3 ? "xx" : ""}.`);
+      if (z.length >= 3)
+        lines.push(`I’m near ZIP ${z}${z.length === 3 ? "xx" : ""}.`);
     }
     if (filters.insurance.length) {
       lines.push(`I have ${filters.insurance.join(", ")} insurance.`);
     }
-    lines.push("Are you accepting new clients? If so, what’s the best next step?");
+    lines.push(
+      "Are you accepting new clients? If so, what’s the best next step?"
+    );
     lines.push("");
     lines.push("(It’s okay to read this word-for-word.)");
     return lines.join(" ");
@@ -962,7 +1162,9 @@ export function ProviderContactCTA({
   }
 
   const fallbackNote =
-    computed.fallbackLevel === "none"
+    !computed.searchReady
+      ? "Add a ZIP (3–5 digits) and/or choose insurance to generate a shortlist."
+      : computed.fallbackLevel === "none"
       ? null
       : computed.fallbackLevel === "relaxed_insurance"
       ? "No matches with insurance applied yet — showing nearby providers who offer this therapy style."
@@ -974,76 +1176,83 @@ export function ProviderContactCTA({
 
   return (
     <>
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="max-w-3xl">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-700">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Main next step
+      {!hideInline ? (
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="max-w-3xl">
+              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Main next step
+              </div>
+
+              <h3 className="mt-3 text-xl font-semibold tracking-tight text-slate-900">
+                {heading}
+              </h3>
+
+              <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                {subheading ??
+                  `Pick 1–3 providers for ${modalityLabel}, copy a message you can send today, and use their website/contact links when you’re ready.`}
+              </p>
             </div>
 
-            <h3 className="mt-3 text-xl font-semibold tracking-tight text-slate-900">
-              {heading}
-            </h3>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => {
+                  scrollToProviders();
+                  openModal();
+                }}
+                className="inline-flex items-center justify-center rounded-2xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+              >
+                Contact providers →
+              </button>
 
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">
-              {subheading ??
-                `Pick 1–3 providers for ${modalityLabel}, copy a message you can send today, and use their website/contact links when you’re ready.`}
-            </p>
+              <button
+                type="button"
+                onClick={openModal}
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
+              >
+                Copy inquiry script
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => {
-                scrollToProviders();
-                openModal();
-              }}
-              className="inline-flex items-center justify-center rounded-2xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-300"
-            >
-              Contact providers →
-            </button>
+          {toolkitHref ? (
+            <div className="mt-3">
+              <a
+                href={toolkitHref}
+                className="text-xs font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-900"
+                onClick={() =>
+                  track("toolkit_click_inline", {
+                    source: "provider_contact_cta",
+                    modalityId,
+                  })
+                }
+              >
+                {toolkitLabel}
+              </a>
+            </div>
+          ) : null}
 
-            <button
-              type="button"
-              onClick={openModal}
-              className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50"
-            >
-              Copy inquiry script
-            </button>
+          <div className="mt-3 text-xs text-slate-500">
+            Tip: it’s normal to reach out to 2–3 providers. Response rates vary.
           </div>
-        </div>
-
-        {toolkitHref ? (
-          <div className="mt-3">
-            <a
-              href={toolkitHref}
-              className="text-xs font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900 hover:decoration-slate-900"
-              onClick={() =>
-                track("toolkit_click_inline", {
-                  source: "provider_contact_cta",
-                  modalityId,
-                })
-              }
-            >
-              {toolkitLabel}
-            </a>
-          </div>
-        ) : null}
-
-        <div className="mt-3 text-xs text-slate-500">
-          Tip: it’s normal to reach out to 2–3 providers. Response rates vary.
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {open ? (
         <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/40 p-4 sm:items-center"
           role="dialog"
           aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeModal();
+          }}
         >
-          <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-start justify-between gap-4 border-b px-6 py-5">
+          <div className="relative w-full max-w-3xl rounded-3xl border border-slate-200 bg-white shadow-xl">
+            <CloseXButton onClick={closeModal} />
+
+            <div className="border-b px-6 py-5 pr-16">
               <div>
                 <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   Contact plan
@@ -1052,17 +1261,10 @@ export function ProviderContactCTA({
                   Reach out to providers for {modalityLabel}
                 </div>
                 <div className="mt-1 text-sm text-slate-600">
-                  Step 1: choose 1–3 • Step 2: copy script • Step 3: use the contact link
+                  Step 1: choose 1–3 • Step 2: copy script • Step 3: use the
+                  contact link
                 </div>
               </div>
-
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded-2xl border px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
-              >
-                Close
-              </button>
             </div>
 
             <div className="grid gap-6 px-6 py-6 lg:grid-cols-[1fr_1fr]">
@@ -1115,14 +1317,15 @@ export function ProviderContactCTA({
                     })
                   ) : (
                     <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-700">
-                      No providers listed for this therapy style yet. Try another match
-                      or check back soon.
+                      Add a ZIP (3–5 digits) and/or choose insurance to see
+                      providers here.
                     </div>
                   )}
                 </div>
 
                 <div className="mt-3 text-[11px] text-slate-500">
-                  You can still copy the scripts even if you don’t select anyone.
+                  You can still copy the scripts even if you don’t select
+                  anyone.
                 </div>
               </div>
 
@@ -1131,7 +1334,8 @@ export function ProviderContactCTA({
                   Scripts to copy
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
-                  Paste into email, a contact form, or use the phone script. Edit anything you want.
+                  Paste into email, a contact form, or use the phone script.
+                  Edit anything you want.
                 </div>
 
                 <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -1166,7 +1370,9 @@ export function ProviderContactCTA({
                   <div className="text-xs font-semibold text-slate-900">
                     Phone script
                   </div>
-                  <div className="mt-2 text-sm text-slate-700">{phoneScript}</div>
+                  <div className="mt-2 text-sm text-slate-700">
+                    {phoneScript}
+                  </div>
                   <button
                     type="button"
                     onClick={copyPhoneScript}
@@ -1237,7 +1443,7 @@ export function ProviderContactCTA({
                   </div>
                 ) : null}
 
-                <div className="mt-4">
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => {
@@ -1251,13 +1457,27 @@ export function ProviderContactCTA({
                   >
                     Email me this shortlist
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-900 hover:bg-slate-50"
+                  >
+                    Back to results
+                  </button>
+                </div>
+
+                <div className="mt-2 text-[11px] text-slate-500">
+                  Tip: Press <span className="font-medium">Esc</span> or click
+                  outside this box to exit.
                 </div>
               </div>
             </div>
 
             <div className="border-t px-6 py-5">
               <div className="text-xs text-slate-500">
-                Educational tool only. Provider availability changes quickly — please contact the office directly to confirm availability.
+                Educational tool only. Provider availability changes quickly —
+                please contact the office directly to confirm availability.
               </div>
             </div>
           </div>
@@ -1276,7 +1496,7 @@ export function ProviderContactCTA({
 
 export function ProviderList({
   modalityId,
-  title = "Providers (starter Illinois list)",
+  title = "Providers",
   listId,
 }: {
   modalityId: ModalityId;
@@ -1285,14 +1505,20 @@ export function ProviderList({
 }) {
   const { filters } = useProviderFilters();
 
-  const computed = useMemo(() => computeProvidersForModality(modalityId, filters), [
-    modalityId,
-    filters.acceptingOnly,
-    filters.telehealthOnly,
-    filters.insurance,
-    filters.zip,
-    filters.language,
-  ]);
+  const computed = useMemo(
+    () => computeProvidersForModality(modalityId, filters),
+    [
+      modalityId,
+      filters.acceptingOnly,
+      filters.telehealthOnly,
+      filters.insurance,
+      filters.zip,
+      filters.language,
+    ]
+  );
+
+  // ✅ HOOK SAFETY: declare hooks BEFORE any conditional returns
+  const lastNoMatchSig = useRef<string | null>(null);
 
   const filtered = computed.filtered;
   const featured = computed.featured;
@@ -1301,9 +1527,10 @@ export function ProviderList({
   const usingFallback = computed.fallbackLevel !== "none";
   const fallbackShown = computed.fallbackShown;
 
-  const lastNoMatchSig = useRef<string | null>(null);
-
+  // Track snapshot only once user has "searched"
   useEffect(() => {
+    if (!computed.searchReady) return;
+
     track("providers_list_snapshot", {
       modalityId,
       totalFiltered: filtered.length,
@@ -1321,6 +1548,7 @@ export function ProviderList({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    computed.searchReady,
     modalityId,
     filtered.length,
     featured.length,
@@ -1335,7 +1563,8 @@ export function ProviderList({
   ]);
 
   useEffect(() => {
-    // only fire "no matches" once per signature, even if we fall back
+    if (!computed.searchReady) return;
+
     if (filtered.length !== 0) {
       lastNoMatchSig.current = null;
       return;
@@ -1367,6 +1596,7 @@ export function ProviderList({
       fallbackShownCount: fallbackShown.length,
     });
   }, [
+    computed.searchReady,
     filtered.length,
     modalityId,
     filters.acceptingOnly,
@@ -1377,6 +1607,19 @@ export function ProviderList({
     computed.fallbackLevel,
     fallbackShown.length,
   ]);
+
+  // ✅ If no search yet, show prompt (safe: after hooks)
+  if (!computed.searchReady) {
+    return (
+      <div id={listId} className="mt-6 rounded-2xl border bg-white p-4">
+        <div className="text-sm font-medium text-slate-900">{title}</div>
+        <div className="mt-3 rounded-xl border bg-slate-50 p-3 text-sm text-slate-700">
+          Add a ZIP (3–5 digits) and/or choose insurance to see providers for
+          this therapy style.
+        </div>
+      </div>
+    );
+  }
 
   const effectiveList = filtered.length ? shown : fallbackShown;
   const effectiveTotal = computed.effectiveTotal;
@@ -1397,8 +1640,12 @@ export function ProviderList({
       <div className="flex items-baseline justify-between gap-4">
         <div className="text-sm font-medium text-slate-900">{title}</div>
         <div className="text-xs text-slate-500">
-          Showing {Math.min(effectiveList.length + (filtered.length ? featured.length : 0), 10 + (filtered.length ? featured.length : 0))} of{" "}
-          {effectiveTotal}
+          Showing{" "}
+          {Math.min(
+            effectiveList.length + (filtered.length ? featured.length : 0),
+            10 + (filtered.length ? featured.length : 0)
+          )}{" "}
+          of {effectiveTotal}
         </div>
       </div>
 
@@ -1438,7 +1685,8 @@ export function ProviderList({
           ))
         ) : (
           <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-700">
-            No providers listed for this therapy style yet. Try another match or check back soon.
+            No providers listed for this therapy style yet. Try another match or
+            check back soon.
           </div>
         )}
       </div>

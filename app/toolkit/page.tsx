@@ -1,4 +1,5 @@
 // app/toolkit/page.tsx
+import React from "react";
 import Link from "next/link";
 import ToolkitPricingClient from "./components/ToolkitPricingClient";
 
@@ -138,22 +139,16 @@ export default async function ToolkitPage({
                   </span>
                 </span>
               ) : null}
-              {focus && profileLabel ? (
-                <span className="mx-2 text-slate-400">•</span>
-              ) : null}
+              {focus && profileLabel ? <span className="mx-2 text-slate-400">•</span> : null}
               {profileLabel ? (
                 <span>
-                  Style{" "}
-                  <span className="font-semibold text-slate-900">
-                    {profileLabel}
-                  </span>
+                  Style <span className="font-semibold text-slate-900">{profileLabel}</span>
                 </span>
               ) : null}
             </div>
           ) : null}
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-            {/* ✅ Explicit styling: no dependency on btn-brand */}
             <a
               href="#pricing"
               className="
@@ -190,9 +185,7 @@ export default async function ToolkitPage({
               >
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6 shadow-sm">
-                    <div className="text-sm font-semibold text-slate-900">
-                      Choose better
-                    </div>
+                    <div className="text-sm font-semibold text-slate-900">Choose better</div>
                     <CalmList
                       items={[
                         "Fit checklist: green flags, neutral signs, deal-breakers.",
@@ -202,9 +195,7 @@ export default async function ToolkitPage({
                   </div>
 
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6 shadow-sm">
-                    <div className="text-sm font-semibold text-slate-900">
-                      Advocate for yourself
-                    </div>
+                    <div className="text-sm font-semibold text-slate-900">Advocate for yourself</div>
                     <CalmList
                       items={[
                         "Copy/paste scripts for pace, structure, goals, feedback.",
@@ -238,9 +229,7 @@ export default async function ToolkitPage({
               >
                 <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6 shadow-sm">
-                    <div className="text-sm font-semibold text-slate-900">
-                      How it works
-                    </div>
+                    <div className="text-sm font-semibold text-slate-900">How it works</div>
                     <CalmList
                       items={[
                         "Choose a tier or enter a custom amount.",
@@ -250,18 +239,11 @@ export default async function ToolkitPage({
                     />
                   </div>
 
-                  {/* ✅ Client wrapper owns the onContinue handler */}
-                  <ToolkitPricingClient
-                    focus={focus}
-                    profileLabel={profileLabel}
-                    src={src}
-                  />
+                  <ToolkitPricingClient focus={focus} profileLabel={profileLabel} src={src} />
                 </div>
               </SectionCard>
 
-              <p className="text-xs text-slate-500">
-                Educational only; not medical or legal advice.
-              </p>
+              <p className="text-xs text-slate-500">Educational only; not medical or legal advice.</p>
             </div>
           </div>
         </div>

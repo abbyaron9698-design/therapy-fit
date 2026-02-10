@@ -1,6 +1,10 @@
 // app/results/[id]/page.tsx
 import { redirect } from "next/navigation";
-import { encodeResultsPayload, normalizePayload, type ResultsPayloadV1 } from "../../../lib/resultsPayload";
+import {
+  encodeResultsPayload,
+  normalizePayload,
+  type ResultsPayloadV1,
+} from "../../../lib/resultsPayload";
 
 function safeLegacyParse(input: string) {
   try {
@@ -10,16 +14,16 @@ function safeLegacyParse(input: string) {
   }
 }
 
-export default function LegacyResultsRedirect({ params }: { params: { id: string } }) {
+export default function LegacyResultsRedirect({
+  params,
+}: {
+  params: { id: string };
+}) {
   const raw = safeLegacyParse(params.id);
   const normalized = normalizePayload(raw);
 
-  if (!normalized) {
-    // If it’s junk, go to canonical results without payload (shows fallback UI)
-    redirect("/results");
-  }
+  if (!normalized) redirect("/results");
 
-  // Ensure version + minimal meta
   const payload: ResultsPayloadV1 = {
     ...normalized,
     v: 1,
@@ -31,5 +35,5 @@ export default function LegacyResultsRedirect({ params }: { params: { id: string
   };
 
   const encoded = encodeResultsPayload(payload);
-  redirect(`/results?r=${encoded}`);
+  redirect(`/results?r=${encodeURIComponent(encoded)}`);
 }

@@ -1,7 +1,7 @@
 // app/support/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { SupportResourceCard } from "../components/SupportResourceCard";
 import { haversineMiles, type LatLng } from "../../lib/geo";
 
@@ -21,8 +21,137 @@ function normalizeZip(z: string) {
   return (z ?? "").replace(/[^\d]/g, "").slice(0, 5);
 }
 
+function stripDiacritics(s: string) {
+  return (s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function norm(s: string) {
-  return (s ?? "").toLowerCase().trim();
+  return stripDiacritics(s ?? "").toLowerCase().trim();
+}
+
+function tokenize(s: string) {
+  return norm(s)
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * Curated query expansions: abbreviations, synonyms, and a few common typos.
+ * These reduce “no results” from typical user behavior.
+ */
+const QUERY_EXPANSIONS: Record<string, string[]> = {
+  // common typos
+  sochol: ["school"],
+  shcool: ["school"],
+  schol: ["school"],
+
+  // abbreviations / shorthand
+  dv: ["domestic", "violence"],
+  sa: ["sexual", "assault"],
+  lgbt: ["lgbtq", "lgbtq+"],
+  lgbtq: ["lgbt", "lgbtq+"],
+  ssi: ["benefits"],
+  snap: ["food", "stamps", "ebt"],
+  wic: ["women", "infants", "children"],
+  medicaid: ["medical", "insurance"],
+  ebt: ["snap", "food", "stamps"],
+  na: ["narcotics", "anonymous"],
+  aa: ["alcoholics", "anonymous"],
+
+  // synonyms (updated food-related so “food” doesn’t accidentally get too narrow)
+  eviction: ["tenant", "housing"],
+  rent: ["housing", "tenant"],
+  food: ["pantry", "meals", "snap", "wic", "foodbank", "food bank", "stamps"],
+  pantry: ["food", "meals", "foodbank"],
+  clinic: ["health", "healthcare"],
+  doctor: ["health", "clinic"],
+  caregiver: ["caregiving"],
+  immigration: ["immigrant"],
+  immigrant: ["immigration"],
+  grief: ["bereavement", "loss"],
+  bereavement: ["grief"],
+  hotline: ["helpline"],
+  helpline: ["hotline"],
+  confidential: ["anonymous", "privacy"],
+  anonymous: ["confidential"],
+};
+
+function extractQuotedPhrases(q: string) {
+  const phrases: string[] = [];
+  const re = /"([^"]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(q)) !== null) {
+    const phrase = norm(m[1]);
+    if (phrase) phrases.push(phrase);
+  }
+  return phrases;
+}
+
+// Light “good enough” stemming (groups -> group, meetings -> meeting, etc.)
+function simpleStem(t: string) {
+  const x = norm(t);
+  if (!x) return x;
+  if (x.length > 4 && x.endsWith("s")) return x.slice(0, -1);
+  if (x.length > 5 && x.endsWith("ing")) return x.slice(0, -3);
+  if (x.length > 4 && x.endsWith("ed")) return x.slice(0, -2);
+  return x;
+}
+
+/**
+ * Build “token groups” so expansions are OR-ed within a group:
+ * Query: "food" -> [["food","pantry","meals","snap","wic",...]]
+ * Query: "food housing" -> [
+ *   ["food","pantry","meals","snap","wic"...],
+ *   ["housing", ...]
+ * ]
+ *
+ * Matching rule:
+ * - AND across groups (each query word/concept must match somehow)
+ * - OR within a group (any synonym is good enough)
+ */
+function buildTokenGroups(q: string) {
+  const baseTokens = tokenize(q).map(simpleStem).filter(Boolean);
+  if (!baseTokens.length) return [];
+
+  const groups: string[][] = [];
+
+  for (const rawToken of baseTokens) {
+    const t = simpleStem(rawToken);
+    const ex = (QUERY_EXPANSIONS[t] ?? []).map((x) => simpleStem(x));
+    const group = [t, ...ex].filter(Boolean);
+
+    // de-dup per group preserve order
+    const seen = new Set<string>();
+    const uniq = group.filter((w) => {
+      if (!w) return false;
+      if (seen.has(w)) return false;
+      seen.add(w);
+      return true;
+    });
+
+    groups.push(uniq);
+  }
+
+  return groups;
+}
+
+function humanFlagLabel(k: FilterKey) {
+  switch (k) {
+    case "free":
+      return "free";
+    case "lowCost":
+      return "low-cost";
+    case "online":
+      return "online";
+    case "inPerson":
+      return "in-person";
+    case "confidential":
+      return "confidential";
+    default:
+      return k;
+  }
 }
 
 function FilterChip({
@@ -119,7 +248,6 @@ function SectionShell({
           id={`${id}-panel`}
           className="rounded-b-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm"
         >
-          {/* “Masonry” columns for density; cards are compact so lanes are much less noticeable */}
           <div className="columns-1 md:columns-2 gap-4 [column-fill:balance]">
             {wrappedChildren}
           </div>
@@ -130,8 +258,7 @@ function SectionShell({
 }
 
 /* =========================
-   RESOURCES (Expanded)
-   National-first + IL/Chicago anchors preserved
+   RESOURCES
    ========================= */
 
 const BASIC_NEEDS: ResourcePlus[] = [
@@ -166,7 +293,11 @@ const BASIC_NEEDS: ResourcePlus[] = [
     coverage: "United States",
     availability: "Online",
     contacts: [
-      { type: "web", href: "https://www.feedingamerica.org/find-your-local-foodbank", label: "Find food bank" },
+      {
+        type: "web",
+        href: "https://www.feedingamerica.org/find-your-local-foodbank",
+        label: "Find food bank",
+      },
     ],
     chips: [{ label: "Food access" }, { label: "Directory" }],
     scope: "National",
@@ -187,7 +318,13 @@ const BASIC_NEEDS: ResourcePlus[] = [
     description: "Find your state SNAP agency and how to apply.",
     coverage: "United States",
     availability: "Online",
-    contacts: [{ type: "web", href: "https://www.fns.usda.gov/snap/state-directory", label: "State directory" }],
+    contacts: [
+      {
+        type: "web",
+        href: "https://www.fns.usda.gov/snap/state-directory",
+        label: "State directory",
+      },
+    ],
     chips: [{ label: "Food benefits" }, { label: "Directory" }],
     scope: "National",
     flags: { online: true },
@@ -202,14 +339,20 @@ const BASIC_NEEDS: ResourcePlus[] = [
     scope: "National",
     flags: { online: true },
   },
+
   // Illinois anchors
   {
     name: "Find Food IL (Illinois Extension)",
-    description: "Statewide map of free food, meal sites, SNAP/LINK & WIC stores, and nearby DHS offices.",
+    description:
+      "Statewide map of free food, meal sites, SNAP/LINK & WIC stores, and nearby DHS offices.",
     coverage: "Illinois",
     availability: "Online",
     contacts: [
-      { type: "web", href: "https://extension.illinois.edu/food/find-food-illinois", label: "Find Food IL map" },
+      {
+        type: "web",
+        href: "https://extension.illinois.edu/food/find-food-illinois",
+        label: "Find Food IL map",
+      },
     ],
     chips: [{ label: "Food access" }, { label: "Illinois" }, { label: "Map / locator" }],
     safetyNote: "Listings and hours can change—call ahead when possible to confirm.",
@@ -231,7 +374,9 @@ const BASIC_NEEDS: ResourcePlus[] = [
     description: "Illinois DHS page linking to food pantry locators and food bank partners.",
     coverage: "Illinois",
     availability: "Online",
-    contacts: [{ type: "web", href: "https://www.dhs.state.il.us/page.aspx?item=31245", label: "Food Connections" }],
+    contacts: [
+      { type: "web", href: "https://www.dhs.state.il.us/page.aspx?item=31245", label: "Food Connections" },
+    ],
     chips: [{ label: "Illinois" }, { label: "Start here" }, { label: "Food support" }],
     scope: "Illinois",
     flags: { online: true },
@@ -241,20 +386,25 @@ const BASIC_NEEDS: ResourcePlus[] = [
     description: "Search for food pantries and free food programs across Illinois (filters available).",
     coverage: "Illinois",
     availability: "Online",
-    contacts: [{ type: "web", href: "https://www.feedingillinois.org/food-resources-illinois", label: "Find Food map" }],
+    contacts: [
+      {
+        type: "web",
+        href: "https://www.feedingillinois.org/food-resources-illinois",
+        label: "Find Food map",
+      },
+    ],
     chips: [{ label: "Illinois" }, { label: "Map / locator" }, { label: "Food support" }],
     scope: "Illinois",
     flags: { free: true, online: true },
   },
+
   // Chicago anchor
   {
     name: "Chicago Food Assistance (City of Chicago)",
     description: "Food pantries and programs across Chicago (neighborhood availability varies).",
     coverage: "Chicago",
     availability: "Varies",
-    contacts: [
-      { type: "web", href: "https://www.chicago.gov/city/en/depts/fss/provdrs/food.html", label: "Website" },
-    ],
+    contacts: [{ type: "web", href: "https://www.chicago.gov/city/en/depts/fss/provdrs/food.html", label: "Website" }],
     chips: [{ label: "Chicago" }, { label: "Food support" }],
     scope: "Chicago",
     flags: { online: true, inPerson: true, lowCost: true },
@@ -266,7 +416,8 @@ const BASIC_NEEDS: ResourcePlus[] = [
 const HOUSING: ResourcePlus[] = [
   {
     name: "HUD — Find Housing Counseling",
-    description: "Find a HUD-approved housing counseling agency (renting, budgeting, foreclosure prevention).",
+    description:
+      "Find a HUD-approved housing counseling agency (renting, budgeting, foreclosure prevention).",
     coverage: "United States",
     availability: "Online",
     contacts: [{ type: "web", href: "https://hud.gov/findacounselor", label: "Find counseling" }],
@@ -304,6 +455,7 @@ const HOUSING: ResourcePlus[] = [
     scope: "National",
     flags: { online: true, free: true },
   },
+
   // Illinois anchors
   {
     name: "Illinois Housing Development Authority (IHDA)",
@@ -330,18 +482,23 @@ const HOUSING: ResourcePlus[] = [
     description: "Tenant rights education and self-help tools for Illinois residents.",
     coverage: "Illinois",
     availability: "Online",
-    contacts: [{ type: "web", href: "https://www.illinoislegalaid.org/legal-information/housing", label: "Housing topics" }],
+    contacts: [
+      { type: "web", href: "https://www.illinoislegalaid.org/legal-information/housing", label: "Housing topics" },
+    ],
     chips: [{ label: "Illinois" }, { label: "Legal information" }],
     scope: "Illinois",
     flags: { online: true, free: true },
   },
+
   // Chicago anchors
   {
     name: "Chicago Rents Right",
     description: "Tenant rights education and resources for Chicago renters (not legal advice).",
     coverage: "Chicago",
     availability: "Online",
-    contacts: [{ type: "web", href: "https://www.chicago.gov/city/en/depts/doh/provdrs/rents_right.html", label: "Website" }],
+    contacts: [
+      { type: "web", href: "https://www.chicago.gov/city/en/depts/doh/provdrs/rents_right.html", label: "Website" },
+    ],
     chips: [{ label: "Chicago" }, { label: "Tenant rights" }],
     scope: "Chicago",
     flags: { online: true },
@@ -368,7 +525,13 @@ const LEGAL_SUPPORT: ResourcePlus[] = [
     description: "Search for free civil legal aid programs by ZIP code.",
     coverage: "United States",
     availability: "Online",
-    contacts: [{ type: "web", href: "https://www.lsc.gov/about-lsc/what-legal-aid/find-legal-aid", label: "Find legal aid" }],
+    contacts: [
+      {
+        type: "web",
+        href: "https://www.lsc.gov/about-lsc/what-legal-aid/find-legal-aid",
+        label: "Find legal aid",
+      },
+    ],
     chips: [{ label: "Directory" }, { label: "Civil legal help" }],
     scope: "National",
     flags: { free: true, online: true },
@@ -378,7 +541,13 @@ const LEGAL_SUPPORT: ResourcePlus[] = [
     description: "Ask a lawyer a question online (availability varies by state).",
     coverage: "United States",
     availability: "Online",
-    contacts: [{ type: "web", href: "https://www.americanbar.org/groups/legal_services/flh-home/flh-free-legal-answers/", label: "Start here" }],
+    contacts: [
+      {
+        type: "web",
+        href: "https://www.americanbar.org/groups/legal_services/flh-home/flh-free-legal-answers/",
+        label: "Start here",
+      },
+    ],
     chips: [{ label: "Online Q&A" }, { label: "Varies by state" }],
     scope: "National",
     flags: { online: true, lowCost: true },
@@ -403,6 +572,7 @@ const LEGAL_SUPPORT: ResourcePlus[] = [
     scope: "National",
     flags: { confidential: true, online: true, free: true },
   },
+
   // Illinois anchors
   {
     name: "Illinois Legal Aid Online",
@@ -414,6 +584,7 @@ const LEGAL_SUPPORT: ResourcePlus[] = [
     scope: "Illinois",
     flags: { online: true },
   },
+
   // Chicago anchors
   {
     name: "Legal Aid Chicago",
@@ -457,7 +628,13 @@ const PEER_COMMUNITY: ResourcePlus[] = [
     description: "Peer-led groups for depression and bipolar disorder.",
     coverage: "United States",
     availability: "Varies",
-    contacts: [{ type: "web", href: "https://www.dbsalliance.org/support/chapters-and-support-groups/find-a-support-group/", label: "Find a group" }],
+    contacts: [
+      {
+        type: "web",
+        href: "https://www.dbsalliance.org/support/chapters-and-support-groups/find-a-support-group/",
+        label: "Find a group",
+      },
+    ],
     chips: [{ label: "Peer support" }, { label: "Mood disorders" }],
     scope: "National",
     flags: { free: true, online: true, inPerson: true },
@@ -492,10 +669,12 @@ const PEER_COMMUNITY: ResourcePlus[] = [
     scope: "National",
     flags: { online: true, inPerson: true },
   },
+
   // Chicago anchor
   {
     name: "NAMI Chicago",
-    description: "Support groups and education for individuals and families affected by mental health conditions.",
+    description:
+      "Support groups and education for individuals and families affected by mental health conditions.",
     coverage: "Chicago",
     availability: "Varies",
     contacts: [{ type: "web", href: "https://www.namichicago.org/", label: "Website" }],
@@ -551,7 +730,8 @@ const DV_SA_PLANNING: ResourcePlus[] = [
   },
   {
     name: "StrongHearts Native Helpline",
-    description: "Support and resources for Native communities impacted by domestic or sexual violence.",
+    description:
+      "Support and resources for Native communities impacted by domestic or sexual violence.",
     coverage: "United States",
     availability: "Varies",
     contacts: [{ type: "web", href: "https://strongheartshelpline.org/", label: "Website" }],
@@ -634,7 +814,6 @@ const GRIEF: ResourcePlus[] = [
     scope: "National",
     flags: { online: true, inPerson: true },
   },
-  // Chicago anchor (kept, but housed under Peer in the past—here we keep grief-specific options only)
   {
     name: "Hospice Foundation of America (grief resources)",
     description: "Education and grief resources; find local support through hospice programs.",
@@ -701,7 +880,8 @@ const OLDER_ADULTS: ResourcePlus[] = [
   // Illinois anchor
   {
     name: "Illinois Department on Aging",
-    description: "Programs and services for older adults and caregivers; links to Area Agencies on Aging.",
+    description:
+      "Programs and services for older adults and caregivers; links to Area Agencies on Aging.",
     coverage: "Illinois",
     availability: "Online",
     contacts: [{ type: "web", href: "https://ilaging.illinois.gov/", label: "Website" }],
@@ -718,7 +898,11 @@ const IMMIGRATION: ResourcePlus[] = [
     coverage: "United States",
     availability: "Online",
     contacts: [
-      { type: "web", href: "https://www.immigrationadvocates.org/nonprofit/legaldirectory/", label: "Find services" },
+      {
+        type: "web",
+        href: "https://www.immigrationadvocates.org/nonprofit/legaldirectory/",
+        label: "Find services",
+      },
     ],
     chips: [{ label: "Directory" }, { label: "Nonprofit services" }],
     scope: "National",
@@ -851,7 +1035,8 @@ const SUBSTANCE_USE_NONCRISIS: ResourcePlus[] = [
   // Illinois anchor
   {
     name: "Illinois Helpline (Substance use + problem gambling)",
-    description: "Confidential help finding treatment and support for substance use and problem gambling.",
+    description:
+      "Confidential help finding treatment and support for substance use and problem gambling.",
     coverage: "Illinois",
     availability: "24/7",
     contacts: [
@@ -938,7 +1123,8 @@ const YOUTH_FAMILY: ResourcePlus[] = [
   // Illinois anchor
   {
     name: "Illinois CARES Line (Youth support)",
-    description: "Navigation support for urgent youth situations in Illinois (not a substitute for emergency response).",
+    description:
+      "Navigation support for urgent youth situations in Illinois (not a substitute for emergency response).",
     coverage: "Illinois",
     availability: "24/7",
     contacts: [{ type: "call", href: "tel:18003459049", label: "Call 1-800-345-9049" }],
@@ -948,8 +1134,126 @@ const YOUTH_FAMILY: ResourcePlus[] = [
   },
 ];
 
+const LGBTQ_SUPPORT: ResourcePlus[] = [
+  {
+    name: "The Trevor Project",
+    description: "LGBTQ+ youth crisis support, education, and resources.",
+    coverage: "United States",
+    availability: "Varies",
+    contacts: [{ type: "web", href: "https://www.thetrevorproject.org/", label: "Website" }],
+    chips: [{ label: "LGBTQ+" }, { label: "Youth" }, { label: "Support" }],
+    scope: "National",
+    flags: { online: true, confidential: true, free: true },
+  },
+  {
+    name: "LGBT National Help Center",
+    description: "Peer support, information, and local resources (services vary).",
+    coverage: "United States",
+    availability: "Varies",
+    contacts: [{ type: "web", href: "https://www.glbthotline.org/", label: "Website" }],
+    chips: [{ label: "LGBTQ+" }, { label: "Peer support" }],
+    scope: "National",
+    flags: { online: true, confidential: true, free: true },
+  },
+  {
+    name: "Trans Lifeline",
+    description: "Peer support by and for trans people (services and hours vary).",
+    coverage: "United States / Canada",
+    availability: "Varies",
+    contacts: [{ type: "web", href: "https://translifeline.org/", label: "Website" }],
+    chips: [{ label: "Trans" }, { label: "Peer support" }],
+    scope: "National",
+    flags: { online: true, confidential: true, free: true },
+  },
+  // Chicago anchor
+  {
+    name: "Center on Halsted",
+    description: "LGBTQ+ community center with programs, groups, and resources.",
+    coverage: "Chicago",
+    availability: "Varies",
+    contacts: [{ type: "web", href: "https://www.centeronhalsted.org/", label: "Website" }],
+    chips: [{ label: "Chicago" }, { label: "LGBTQ+" }, { label: "Community" }],
+    scope: "Chicago",
+    flags: { online: true, inPerson: true, lowCost: true },
+    lat: 41.8781,
+    lng: -87.6298,
+  },
+];
+
+const HEALTHCARE_ACCESS: ResourcePlus[] = [
+  {
+    name: "Find a Health Center (HRSA)",
+    description: "Find federally funded health centers (often sliding fee; services vary).",
+    coverage: "United States",
+    availability: "Online",
+    contacts: [{ type: "web", href: "https://findahealthcenter.hrsa.gov/", label: "Search" }],
+    chips: [{ label: "Primary care" }, { label: "Sliding fee" }],
+    scope: "National",
+    flags: { online: true, lowCost: true, inPerson: true },
+  },
+  {
+    name: "Illinois Department of Healthcare and Family Services (HFS)",
+    description: "Illinois Medicaid and healthcare program info (benefits + eligibility).",
+    coverage: "Illinois",
+    availability: "Online",
+    contacts: [{ type: "web", href: "https://hfs.illinois.gov/", label: "Website" }],
+    chips: [{ label: "Illinois" }, { label: "Medicaid" }],
+    scope: "Illinois",
+    flags: { online: true },
+  },
+  {
+    name: "Chicago Department of Public Health",
+    description: "Public health info and city programs (services vary).",
+    coverage: "Chicago",
+    availability: "Online",
+    contacts: [{ type: "web", href: "https://www.chicago.gov/city/en/depts/cdph.html", label: "Website" }],
+    chips: [{ label: "Chicago" }, { label: "Public health" }],
+    scope: "Chicago",
+    flags: { online: true, inPerson: true, lowCost: true },
+    lat: 41.8781,
+    lng: -87.6298,
+  },
+];
+
+const COMMUNITY_ARTS: ResourcePlus[] = [
+  {
+    name: "Meetup",
+    description: "Find interest-based groups and events near you (cost varies; not therapy).",
+    coverage: "United States",
+    availability: "Online",
+    contacts: [{ type: "web", href: "https://www.meetup.com/", label: "Website" }],
+    chips: [{ label: "Community" }, { label: "Connection" }],
+    scope: "National",
+    flags: { online: true, lowCost: true, inPerson: true },
+  },
+  {
+    name: "Chicago Park District",
+    description: "Local classes, programs, and community activities (registration varies).",
+    coverage: "Chicago",
+    availability: "Varies",
+    contacts: [{ type: "web", href: "https://www.chicagoparkdistrict.com/", label: "Website" }],
+    chips: [{ label: "Chicago" }, { label: "Activities" }],
+    scope: "Chicago",
+    flags: { online: true, inPerson: true, lowCost: true },
+    lat: 41.8781,
+    lng: -87.6298,
+  },
+  {
+    name: "Chicago Public Library — Events",
+    description: "Free community events, groups, and learning opportunities (varies by branch).",
+    coverage: "Chicago",
+    availability: "Varies",
+    contacts: [{ type: "web", href: "https://www.chipublib.org/events/", label: "Browse events" }],
+    chips: [{ label: "Chicago" }, { label: "Free" }, { label: "Community" }],
+    scope: "Chicago",
+    flags: { free: true, online: true, inPerson: true },
+    lat: 41.8781,
+    lng: -87.6298,
+  },
+];
+
 /* =========================
-   FILTER + SORT HELPERS
+   FILTER + SORT + SEARCH HELPERS
    ========================= */
 
 function matchesScope(r: ResourcePlus, scopes: Scope[]) {
@@ -964,15 +1268,58 @@ function matchesFlags(r: ResourcePlus, flagOn: Partial<Record<FilterKey, boolean
   return need.every(([k]) => Boolean((f as any)[k]));
 }
 
+function buildHaystack(r: ResourcePlus) {
+  const flagWords = Object.entries(r.flags ?? {})
+    .filter(([, v]) => Boolean(v))
+    .map(([k]) => humanFlagLabel(k as FilterKey));
+
+  const contacts = (r.contacts ?? [])
+    .map((c: any) => [c?.type, c?.label, c?.href].filter(Boolean).join(" "))
+    .filter(Boolean);
+
+  const chips = (r.chips ?? []).map((c) => c.label).filter(Boolean);
+
+  return [
+    r.name,
+    r.description,
+    r.coverage,
+    r.availability,
+    r.scope,
+    r.safetyNote,
+    ...flagWords,
+    ...chips,
+    ...contacts,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * Search rules (updated):
+ * - Quoted phrases must appear.
+ * - Token groups are AND-ed across groups, OR-ed within each group.
+ *   (So "food" matches if ANY of food/pantry/meals/snap/wic appear.)
+ */
 function matchesSearch(r: ResourcePlus, q: string) {
-  const s = norm(q);
-  if (!s) return true;
-  const hay = norm(
-    [r.name, r.description, r.coverage, r.availability, ...(r.chips ?? []).map((c) => c.label)]
-      .filter(Boolean)
-      .join(" ")
-  );
-  return hay.includes(s);
+  const raw = norm(q);
+  if (!raw) return true;
+
+  const hay = norm(buildHaystack(r));
+
+  const phrases = extractQuotedPhrases(q);
+  if (phrases.length) {
+    const okPhrases = phrases.every((p) => hay.includes(p));
+    if (!okPhrases) return false;
+  }
+
+  const groups = buildTokenGroups(q)
+    .map((g) => g.filter((t) => t.length >= 2))
+    .filter((g) => g.length > 0);
+
+  if (!groups.length) return true;
+
+  // AND across groups: every concept must match somewhere
+  return groups.every((group) => group.some((term) => hay.includes(term)));
 }
 
 async function fetchZipLatLng(zip: string): Promise<LatLng | null> {
@@ -985,6 +1332,48 @@ async function fetchZipLatLng(zip: string): Promise<LatLng | null> {
   return { lat: data.lat, lng: data.lng };
 }
 
+/* =========================
+   “DID YOU MEAN…?” HELPERS
+   Lightweight fuzzy suggestions for typos.
+   ========================= */
+
+function levenshtein(a: string, b: string) {
+  // Classic DP edit distance; fast enough for short tokens.
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+
+  const m = a.length;
+  const n = b.length;
+
+  const prev = new Array(n + 1).fill(0);
+  const curr = new Array(n + 1).fill(0);
+
+  for (let j = 0; j <= n; j++) prev[j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    const ai = a.charCodeAt(i - 1);
+    for (let j = 1; j <= n; j++) {
+      const cost = ai === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1, // deletion
+        curr[j - 1] + 1, // insertion
+        prev[j - 1] + cost // substitution
+      );
+    }
+    for (let j = 0; j <= n; j++) prev[j] = curr[j];
+  }
+
+  return prev[n];
+}
+
+function replaceTokenInQuery(query: string, fromToken: string, toToken: string) {
+  // Replaces whole-word occurrences (case-insensitive) of `fromToken`.
+  const re = new RegExp(`\\b${fromToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "ig");
+  return query.replace(re, toToken);
+}
+
 export default function SupportPage() {
   const [scopes, setScopes] = useState<Scope[]>([]);
   const [flagOn, setFlagOn] = useState<Partial<Record<FilterKey, boolean>>>({});
@@ -992,6 +1381,8 @@ export default function SupportPage() {
   const [zip, setZip] = useState("");
   const [userLL, setUserLL] = useState<LatLng | null>(null);
   const [q, setQ] = useState("");
+
+  const deferredQ = useDeferredValue(q);
 
   useEffect(() => {
     let cancelled = false;
@@ -1086,6 +1477,27 @@ export default function SupportPage() {
         subtitle: "Resources for kids, teens, and caregivers (not emergency response).",
         items: YOUTH_FAMILY,
       },
+      {
+        key: "lgbtq",
+        id: "lgbtq",
+        title: "LGBTQ+ support & community",
+        subtitle: "Support, groups, and resources (availability varies).",
+        items: LGBTQ_SUPPORT,
+      },
+      {
+        key: "healthcare",
+        id: "healthcare",
+        title: "Healthcare access & clinics",
+        subtitle: "Low-cost clinic finders and state/local program hubs (services vary).",
+        items: HEALTHCARE_ACCESS,
+      },
+      {
+        key: "arts",
+        id: "arts",
+        title: "Community arts & connection",
+        subtitle: "Non-clinical community connection (classes, groups, events).",
+        items: COMMUNITY_ARTS,
+      },
     ],
     []
   );
@@ -1095,7 +1507,7 @@ export default function SupportPage() {
       items
         .filter((r) => matchesScope(r, scopes))
         .filter((r) => matchesFlags(r, flagOn))
-        .filter((r) => matchesSearch(r, q));
+        .filter((r) => matchesSearch(r, deferredQ));
 
     const sortMaybe = (items: ResourcePlus[]) => {
       if (!nearMe || !userLL) return items;
@@ -1119,9 +1531,13 @@ export default function SupportPage() {
     return allSections
       .map((s) => ({ ...s, items: sortMaybe(apply(s.items)) }))
       .filter((s) => s.items.length > 0);
-  }, [allSections, scopes, flagOn, nearMe, userLL, q]);
+  }, [allSections, scopes, flagOn, nearMe, userLL, deferredQ]);
 
-  // Default: all collapsed
+  const resultsCount = useMemo(
+    () => filteredSections.reduce((sum, s) => sum + s.items.length, 0),
+    [filteredSections]
+  );
+
   const [openKey, setOpenKey] = useState<Record<string, boolean>>(() => {
     const out: Record<string, boolean> = {};
     for (const s of allSections) out[s.key] = false;
@@ -1131,7 +1547,7 @@ export default function SupportPage() {
   // Auto-open sections with matches when filtering/searching
   useEffect(() => {
     const anyFilters =
-      norm(q).length > 0 ||
+      norm(deferredQ).length > 0 ||
       scopes.length > 0 ||
       Object.values(flagOn).some(Boolean) ||
       (nearMe && normalizeZip(zip).length === 5);
@@ -1143,12 +1559,7 @@ export default function SupportPage() {
       for (const s of filteredSections) next[s.key] = true;
       return next;
     });
-  }, [q, scopes, flagOn, nearMe, zip, filteredSections]);
-
-  const resultsCount = useMemo(
-    () => filteredSections.reduce((sum, s) => sum + s.items.length, 0),
-    [filteredSections]
-  );
+  }, [deferredQ, scopes, flagOn, nearMe, zip, filteredSections]);
 
   function toggleScope(sc: Scope) {
     setScopes((prev) => (prev.includes(sc) ? prev.filter((x) => x !== sc) : [...prev, sc]));
@@ -1174,6 +1585,145 @@ export default function SupportPage() {
     setZip("");
     setAllOpen(false);
   }
+
+  const zipOk = normalizeZip(zip).length === 5;
+
+  /**
+   * Build a lightweight “dictionary” of likely search terms from your dataset.
+   * Then, when 0 results, propose corrections.
+   */
+  const suggestionDictionary = useMemo(() => {
+    const popular = [
+      "food",
+      "pantry",
+      "housing",
+      "rent",
+      "eviction",
+      "tenant",
+      "legal",
+      "support",
+      "group",
+      "grief",
+      "bereavement",
+      "immigration",
+      "immigrant",
+      "caregiver",
+      "caregiving",
+      "clinic",
+      "health",
+      "medicaid",
+      "benefits",
+      "snap",
+      "wic",
+      "lgbtq",
+      "lgbtq+",
+      "domestic",
+      "violence",
+      "sexual",
+      "assault",
+      "confidential",
+      "free",
+      "low-cost",
+      "online",
+      "in-person",
+      "recovery",
+      "meetings",
+      "aa",
+      "na",
+    ].map(norm);
+
+    const bag = new Set<string>();
+    for (const w of popular) if (w) bag.add(w);
+
+    // Pull tokens from all resources (names, chips, etc.)
+    for (const section of allSections) {
+      for (const r of section.items) {
+        const hay = buildHaystack(r);
+        for (const t of tokenize(hay)) {
+          if (t.length < 3) continue;
+          // avoid extremely generic tokens
+          if (t === "https" || t === "www" || t === "org" || t === "com") continue;
+          bag.add(t);
+        }
+      }
+      // section title tokens
+      for (const t of tokenize(section.title)) if (t.length >= 3) bag.add(t);
+    }
+
+    return Array.from(bag);
+  }, [allSections]);
+
+  const didYouMeanSuggestions = useMemo(() => {
+    const raw = norm(deferredQ);
+    if (!raw) return [];
+
+    // Only show when user is *actually* stuck:
+    if (resultsCount !== 0) return [];
+
+    // Ignore if they are using quotes (phrases) — fuzzy gets weird here.
+    if (extractQuotedPhrases(deferredQ).length) return [];
+
+    const tokens = tokenize(deferredQ).filter((t) => t.length >= 3);
+    if (!tokens.length) return [];
+
+    const suggestions: { label: string; nextQuery: string; score: number }[] = [];
+
+    for (const token of tokens) {
+      // If we already have a known expansion (typo/shorthand), prefer that.
+      const hard = QUERY_EXPANSIONS[token]?.[0];
+      if (hard && hard !== token) {
+        suggestions.push({
+          label: `Replace “${token}” → “${hard}”`,
+          nextQuery: replaceTokenInQuery(deferredQ, token, hard),
+          score: 0,
+        });
+        continue;
+      }
+
+      let bestWord = "";
+      let bestDist = Infinity;
+
+      // Compare to dictionary words; keep it cheap.
+      // For short typos, a max distance of 2–3 is useful.
+      const maxDist = token.length <= 5 ? 2 : 3;
+
+      for (const cand of suggestionDictionary) {
+        if (!cand || cand === token) continue;
+        // tiny pruning: length difference too big
+        if (Math.abs(cand.length - token.length) > maxDist) continue;
+
+        const d = levenshtein(token, cand);
+        if (d < bestDist) {
+          bestDist = d;
+          bestWord = cand;
+          if (bestDist === 1) break; // “good enough”
+        }
+      }
+
+      if (bestWord && bestDist <= maxDist) {
+        suggestions.push({
+          label: `Replace “${token}” → “${bestWord}”`,
+          nextQuery: replaceTokenInQuery(deferredQ, token, bestWord),
+          score: bestDist,
+        });
+      }
+    }
+
+    // De-dup suggestions and pick a few best.
+    const seen = new Set<string>();
+    const uniq = suggestions
+      .sort((a, b) => a.score - b.score)
+      .filter((s) => {
+        const k = norm(s.nextQuery);
+        if (!k) return false;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .slice(0, 3);
+
+    return uniq;
+  }, [deferredQ, resultsCount, suggestionDictionary]);
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -1212,7 +1762,7 @@ export default function SupportPage() {
             </div>
           </div>
 
-          {/* Find support (NOT sticky) */}
+          {/* Find support */}
           <div className="mt-10">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-col gap-4">
@@ -1221,6 +1771,10 @@ export default function SupportPage() {
                     <div className="text-sm font-medium text-slate-900">Find support</div>
                     <div className="text-xs text-slate-600">
                       Search + filters help you narrow, but don’t hide important options.
+                      <span className="block">
+                        Tip: use quotes for exact phrases (e.g.,{" "}
+                        <span className="font-semibold">"support group"</span>).
+                      </span>
                     </div>
                   </div>
 
@@ -1242,8 +1796,9 @@ export default function SupportPage() {
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search (e.g., food, eviction, support group, immigration)"
+                    placeholder='Search (e.g., food, eviction, "support group", immigration, school)'
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900"
+                    aria-label="Search support resources"
                   />
 
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -1263,8 +1818,11 @@ export default function SupportPage() {
                         placeholder="ZIP (5 digits)"
                         className="w-40 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900"
                         inputMode="numeric"
+                        aria-label="ZIP code"
                       />
-                      <span className="text-[11px] text-slate-500">Distance not guaranteed.</span>
+                      <span className="text-[11px] text-slate-500">
+                        {nearMe && !zipOk ? "Enter 5 digits to sort." : "Distance not guaranteed."}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1301,9 +1859,12 @@ export default function SupportPage() {
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="text-xs leading-relaxed text-slate-700">
-                    These resources are informational, non-emergency, and non-clinical. If you need urgent help right now,
-                    visit{" "}
-                    <a href="/crisis" className="font-semibold text-slate-900 underline underline-offset-2">
+                    These resources are informational, non-emergency, and non-clinical. If you need urgent
+                    help right now, visit{" "}
+                    <a
+                      href="/crisis"
+                      className="font-semibold text-slate-900 underline underline-offset-2"
+                    >
                       Crisis Support
                     </a>
                     .
@@ -1326,6 +1887,59 @@ export default function SupportPage() {
                     Collapse all
                   </button>
                 </div>
+
+                {/* No results helper + “Did you mean…?” */}
+                {resultsCount === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-sm font-semibold text-slate-900">No matches yet</div>
+                    <div className="mt-1 text-sm text-slate-600">
+                      Try a simpler word (e.g., <span className="font-semibold">food</span>,{" "}
+                      <span className="font-semibold">housing</span>,{" "}
+                      <span className="font-semibold">support group</span>) or clear filters.
+                    </div>
+
+                    {didYouMeanSuggestions.length ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="text-xs font-semibold text-slate-900">Did you mean…</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {didYouMeanSuggestions.map((s) => (
+                            <button
+                              key={s.nextQuery}
+                              type="button"
+                              onClick={() => setQ(s.nextQuery)}
+                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-50"
+                              title={s.label}
+                            >
+                              {s.nextQuery}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={clearAll}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-50"
+                      >
+                        Clear everything
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScopes([]);
+                          setFlagOn({});
+                          setNearMe(false);
+                          setZip("");
+                        }}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-50"
+                      >
+                        Clear filters only
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

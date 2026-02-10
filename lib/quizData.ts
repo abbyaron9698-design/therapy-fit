@@ -67,6 +67,8 @@ export type Question =
 
 export type Answers = Partial<Record<QuestionId, string[] | string>>;
 
+// ------------ helpers ------------
+
 function addReason(
   bucket: Record<ModalityId, string[]>,
   id: ModalityId,
@@ -84,6 +86,56 @@ function getSelected(q: Question, answers: Answers): string[] {
   }
   // single
   return typeof v === "string" && v ? [v] : [];
+}
+
+function asArray(v: string[] | string | undefined): string[] {
+  if (!v) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+/**
+ * Layer C: gates (non-diagnostic, just decision support)
+ * - stabilizationFirst: strong “skills first / pacing” signal
+ * - considerHigherSupport: cluster of intensity indicators
+ */
+function deriveGates(answers: Answers) {
+  const symptoms = asArray(answers.symptoms);
+  const distress = asArray(answers.distressFirst);
+
+  const stabilizationSignals = new Set<string>([
+    "dissociate",
+    "shutdown",
+    "flooded",
+    "urge_escape",
+    // symptom-side
+    "overwhelm",
+    "numb",
+    "trauma_reminders",
+  ]);
+
+  const higherSupportSignals = new Set<string>([
+    "dissociate",
+    "urge_escape",
+    "flooded",
+    "shutdown",
+    // symptom-side
+    "overwhelm",
+    "panic",
+    "bio_disruption",
+  ]);
+
+  const stabilizeHits =
+    symptoms.filter((s) => stabilizationSignals.has(s)).length +
+    distress.filter((s) => stabilizationSignals.has(s)).length;
+
+  const higherSupportHits =
+    symptoms.filter((s) => higherSupportSignals.has(s)).length +
+    distress.filter((s) => stabilizationSignals.has(s)).length;
+
+  return {
+    stabilizationFirst: stabilizeHits >= 2,
+    considerHigherSupport: higherSupportHits >= 3,
+  };
 }
 
 export function scoreAnswers(answers: Answers) {
@@ -148,6 +200,33 @@ export function scoreAnswers(answers: Answers) {
     }
   }
 
+  // Layer C gates
+  const gates = deriveGates(answers);
+
+  // Optional gentle scoring nudges based on gates
+  if (gates.stabilizationFirst) {
+    scores.dbt += 0.6;
+    scores.somatic += 0.6;
+    addReason(
+      reasons,
+      "dbt",
+      "You reported overwhelm/shutdown signals — skills-first support can help stabilize."
+    );
+    addReason(
+      reasons,
+      "somatic",
+      "Body-based stabilization can help widen your window of tolerance before deeper processing."
+    );
+  }
+
+  if (gates.considerHigherSupport) {
+    addReason(
+      reasons,
+      "dbt",
+      "If symptoms feel intense or hard to manage day-to-day, more support may help you build stability faster."
+    );
+  }
+
   const entries = Object.entries(scores) as [ModalityId, number][];
 
   // meds is a flag, not a winner
@@ -183,14 +262,13 @@ export function scoreAnswers(answers: Answers) {
     const rs = reasons[id] ?? [];
     topReasons[id] = rs.slice(0, 3);
     if (!topReasons[id].length) {
-      // ✅ avoids repeating “answers”
-      topReasons[id] = ["Matches what you’re looking for based on what you shared."];
+      topReasons[id] = [
+        "Matches what you’re looking for based on what you shared.",
+      ];
     }
   }
 
-  // --------------------
   // Confidence (simple + explainable)
-  // --------------------
   const topScore = ranked[0]?.[1] ?? 0;
   const secondScore = ranked[1]?.[1] ?? 0;
   const thirdScore = ranked[2]?.[1] ?? 0;
@@ -212,13 +290,12 @@ export function scoreAnswers(answers: Answers) {
       ? "Good fit"
       : "Worth exploring";
 
-  // ✅ Updated copy (no “answers” repetition, reads cleaner on Results)
   const confidenceWhy =
     confidenceLevel === "strong"
       ? "Your top match stood out clearly across multiple areas you selected."
       : confidenceLevel === "good"
       ? "Your top match was consistent, with a couple approaches close behind."
-      : "Several approaches were close — which is common. Your preferences and therapist fit will matter most.";
+      : "Several approaches were close — which is common. Preferences and therapist fit will help you choose.";
 
   return {
     top3,
@@ -238,6 +315,7 @@ export function scoreAnswers(answers: Answers) {
         totalNonMed,
       },
     },
+    gates,
   };
 }
 
@@ -267,9 +345,13 @@ export const QUESTIONS: Question[] = [
         label: "Avoiding situations, thoughts, or feelings",
         w: { cbt: 2.0, act: 1.6, erp: 1.2 },
         r: {
-          cbt: ["Avoidance patterns often respond well to gradual skillful practice."],
+          cbt: [
+            "Avoidance patterns often respond well to gradual, skillful practice.",
+          ],
           act: ["ACT supports approaching life while making room for discomfort."],
-          erp: ["If avoidance is OCD-related, ERP may be especially effective."],
+          erp: [
+            "If avoidance is tied to repeated checking/reassurance habits, ERP-style work may fit especially well.",
+          ],
         },
       },
       {
@@ -286,7 +368,9 @@ export const QUESTIONS: Question[] = [
         label: "Panic or intense physical anxiety",
         w: { cbt: 1.8, somatic: 1.8, act: 1.0 },
         r: {
-          cbt: ["CBT can reduce panic cycles through skills and gradual exposure."],
+          cbt: [
+            "CBT can reduce panic cycles through skills and gradual exposure.",
+          ],
           somatic: ["Body-first approaches can help calm physical activation."],
         },
       },
@@ -295,7 +379,9 @@ export const QUESTIONS: Question[] = [
         label: "Intrusive thoughts or repetitive behaviors",
         w: { erp: 3.0, cbt: 1.0 },
         r: {
-          erp: ["ERP is a gold-standard approach when compulsions/rituals are present."],
+          erp: [
+            "ERP is a well-supported approach when repetitive checking/ritual-like behaviors keep the anxiety loop going.",
+          ],
         },
       },
       {
@@ -303,9 +389,15 @@ export const QUESTIONS: Question[] = [
         label: "Distressing memories or reminders",
         w: { emdr: 2.6, somatic: 2.0, ifs: 1.0 },
         r: {
-          emdr: ["EMDR is designed to process distressing memories that feel ‘stuck’."],
-          somatic: ["Somatic approaches can reduce trauma-related activation in the body."],
-          ifs: ["Parts work can be helpful when trauma shows up as inner conflict/shame."],
+          emdr: [
+            "EMDR is designed to process distressing memories that feel ‘stuck.’",
+          ],
+          somatic: [
+            "Somatic approaches can reduce trauma-related activation in the body.",
+          ],
+          ifs: [
+            "Parts work can be helpful when trauma shows up as inner conflict/shame.",
+          ],
         },
       },
       {
@@ -313,8 +405,12 @@ export const QUESTIONS: Question[] = [
         label: "Feeling numb, shut down, or disconnected",
         w: { somatic: 2.4, psychodynamic: 1.4, ifs: 1.2 },
         r: {
-          somatic: ["Somatic approaches can help expand your window of tolerance."],
-          psychodynamic: ["Insight-oriented work can explore what’s driving shutdown."],
+          somatic: [
+            "Somatic approaches can help expand your window of tolerance.",
+          ],
+          psychodynamic: [
+            "Insight-oriented work can explore what’s driving shutdown.",
+          ],
         },
       },
       {
@@ -323,7 +419,9 @@ export const QUESTIONS: Question[] = [
         w: { act: 2.4, cbt: 1.6, narrative: 1.4 },
         r: {
           act: ["ACT rebuilds momentum through values-based action."],
-          cbt: ["CBT supports behavioral activation and realistic thinking patterns."],
+          cbt: [
+            "CBT supports behavioral activation and realistic thinking patterns.",
+          ],
           narrative: ["Narrative therapy can help re-author identity and meaning."],
         },
       },
@@ -332,7 +430,9 @@ export const QUESTIONS: Question[] = [
         label: "Sleep, appetite, or energy disruption",
         w: { med: 2.0, cbt: 1.0 },
         r: {
-          med: ["Significant sleep/appetite/energy changes can be worth a med consult."],
+          med: [
+            "Significant sleep/appetite/energy changes can be worth a med consult.",
+          ],
         },
       },
     ],
@@ -350,7 +450,9 @@ export const QUESTIONS: Question[] = [
         label: "My thoughts spiral",
         w: { cbt: 1.8, act: 1.6 },
         r: {
-          cbt: ["Your distress starts cognitively; CBT can target thought-behavior loops."],
+          cbt: [
+            "Your distress starts cognitively; CBT can target thought-behavior loops.",
+          ],
           act: ["ACT can help you unhook from spirals and return to values."],
         },
       },
@@ -359,7 +461,9 @@ export const QUESTIONS: Question[] = [
         label: "My body reacts before I can think",
         w: { somatic: 2.3, emdr: 1.2 },
         r: {
-          somatic: ["You described body-first activation; somatic therapy often fits."],
+          somatic: [
+            "You described body-first activation; somatic therapy often fits.",
+          ],
           emdr: ["If body reactions are linked to memory triggers, EMDR can help."],
         },
       },
@@ -368,7 +472,9 @@ export const QUESTIONS: Question[] = [
         label: "I feel flooded and overwhelmed",
         w: { dbt: 2.2, somatic: 1.4 },
         r: {
-          dbt: ["DBT provides step-by-step skills for high emotional intensity."],
+          dbt: [
+            "DBT provides step-by-step skills for high emotional intensity.",
+          ],
         },
       },
       {
@@ -376,7 +482,9 @@ export const QUESTIONS: Question[] = [
         label: "I shut down or go numb",
         w: { somatic: 2.2, ifs: 1.2, psychodynamic: 1.0 },
         r: {
-          somatic: ["Somatic approaches can help with shutdown/freeze responses."],
+          somatic: [
+            "Somatic approaches can help with shutdown/freeze responses.",
+          ],
         },
       },
       {
@@ -384,7 +492,9 @@ export const QUESTIONS: Question[] = [
         label: "I dissociate or feel unreal",
         w: { somatic: 2.6, emdr: 1.0 },
         r: {
-          somatic: ["Dissociation often benefits from stabilization + body-based pacing."],
+          somatic: [
+            "Dissociation often benefits from stabilization + body-based pacing.",
+          ],
         },
       },
       {

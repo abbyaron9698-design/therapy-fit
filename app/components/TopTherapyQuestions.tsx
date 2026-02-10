@@ -58,21 +58,18 @@ function parseAnswer(a: React.ReactNode): ParsedAnswer {
   const shortIdx = parts.findIndex(isShortAnswerParagraph);
 
   if (shortIdx === -1) {
-  return {
-    visible: parts,
-    sections: [],
-  };
-}
+    return {
+      visible: parts,
+      sections: [],
+    };
+  }
 
   const afterShort = parts.slice(shortIdx + 1);
   const firstHeadingIdx = afterShort.findIndex(isHeadingParagraph);
   const preHeading =
     firstHeadingIdx === -1 ? afterShort : afterShort.slice(0, firstHeadingIdx);
 
-  const visible = [
-    parts[shortIdx],
-    ...preHeading.slice(0, 2),
-  ].filter(Boolean);
+  const visible = [parts[shortIdx], ...preHeading.slice(0, 2)].filter(Boolean);
 
   const collapsed = [
     ...preHeading.slice(2),
@@ -103,22 +100,27 @@ function AnswerSections({ a }: { a: React.ReactNode }) {
 
   return (
     <div className="mt-4">
-      {parsed.visible.length > 0 && (
-        <div className="space-y-3">{parsed.visible}</div>
-      )}
+      {parsed.visible.length > 0 && <div className="space-y-3">{parsed.visible}</div>}
 
       {parsed.sections.length > 0 && (
         <div className="mt-4 space-y-2">
           {parsed.sections.map((s, i) => (
             <details
               key={i}
-              className="rounded-2xl border border-slate-200 bg-slate-50/60"
+              className="group rounded-2xl border border-slate-200 bg-slate-50/60"
             >
-              <summary className="flex cursor-pointer items-center justify-between px-4 py-3">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
                 <span className="text-sm font-semibold text-slate-900">{s.title}</span>
-                <span className="text-slate-500">+</span>
+
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 group-open:hidden">
+                  Show
+                </span>
+                <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 group-open:inline">
+                  Hide
+                </span>
               </summary>
-              <div className="px-4 pb-4 space-y-3">{s.content}</div>
+
+              <div className="space-y-3 px-4 pb-4">{s.content}</div>
             </details>
           ))}
         </div>
@@ -152,13 +154,14 @@ export default function TopTherapyQuestions({ items }: { items: FaqItem[] }) {
     <div className="mt-10 space-y-12">
       {grouped.map((group) => (
         <section key={group.id} id={group.id} className="scroll-mt-28">
-          <h2 className="mb-4 text-xl font-semibold text-slate-900">
-            {group.category}
-          </h2>
+          <h2 className="mb-4 text-xl font-semibold text-slate-900">{group.category}</h2>
 
           <div className="space-y-4">
             {group.items.map((item) => {
               const isOpen = openIds.has(item.id);
+              const contentId = `${item.id}-content`;
+              const buttonId = `${item.id}-button`;
+
               return (
                 <section
                   key={item.id}
@@ -168,7 +171,10 @@ export default function TopTherapyQuestions({ items }: { items: FaqItem[] }) {
                   )}
                 >
                   <button
+                    id={buttonId}
                     type="button"
+                    aria-expanded={isOpen}
+                    aria-controls={contentId}
                     onClick={() =>
                       setOpenIds((prev) => {
                         const next = new Set(prev);
@@ -176,21 +182,36 @@ export default function TopTherapyQuestions({ items }: { items: FaqItem[] }) {
                         return next;
                       })
                     }
-                    className="flex w-full items-start justify-between p-6 text-left"
+                    className={cn(
+                      "flex w-full items-start justify-between p-6 text-left",
+                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    )}
                   >
                     <div className="flex gap-3">
-                      <span className="text-xl">{item.icon}</span>
-                      <h3 className="text-lg font-semibold text-slate-900">
-                        {item.q}
-                      </h3>
+                      {item.icon ? (
+                        <span aria-hidden className="text-xl leading-none">
+                          {item.icon}
+                        </span>
+                      ) : null}
+
+                      <h3 className="text-lg font-semibold text-slate-900">{item.q}</h3>
                     </div>
-                    <span className="text-xl text-slate-600">
+
+                    <span
+                      aria-hidden
+                      className="ml-4 inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700"
+                    >
                       {isOpen ? "–" : "+"}
                     </span>
                   </button>
 
                   {isOpen && (
-                    <div className="px-6 pb-6">
+                    <div
+                      id={contentId}
+                      role="region"
+                      aria-labelledby={buttonId}
+                      className="px-6 pb-6"
+                    >
                       <AnswerSections a={item.a} />
                     </div>
                   )}

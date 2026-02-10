@@ -17,7 +17,6 @@ type Props = {
 };
 
 function getStickyVariant(): 0 | 1 {
-  // Runs only on client (component is "use client"), but still guard for safety.
   if (typeof window === "undefined") return 0;
 
   try {
@@ -35,7 +34,6 @@ function getStickyVariant(): 0 | 1 {
 
 function isInternalHref(href?: string) {
   if (!href) return false;
-  // Treat relative paths like "/quiz" or "/toolkit?x=y" as internal.
   return href.startsWith("/");
 }
 
@@ -50,13 +48,15 @@ export function StickyQuizCTA({
   secondaryShowAfterPx = 1100,
 }: Props) {
   const pathname = usePathname();
+
+  // ✅ Never show sticky CTA on quiz flow OR results pages
+  const hideOnThisRoute =
+    !!pathname &&
+    (pathname.startsWith("/quiz") || pathname === "/results" || pathname.startsWith("/results/"));
+
   const [visible, setVisible] = useState(false);
   const [threshold, setThreshold] = useState<number>(showAfterPx);
-
-  // ✅ Lazy init variant: avoids setState-in-effect lint rule
   const [variant] = useState<0 | 1>(() => getStickyVariant());
-
-  // ✅ Track scrollY so secondary can appear/disappear properly
   const [scrollY, setScrollY] = useState(0);
 
   const computedLabel = useMemo(() => {
@@ -64,10 +64,14 @@ export function StickyQuizCTA({
     return abLabels?.[variant] ?? "Start the quiz";
   }, [label, abLabels, variant]);
 
-  // Compute threshold based on hero end marker (preferred)
+  // ✅ Reset state on route changes so it can't "carry over" into /results
   useEffect(() => {
-    // Don’t show on quiz pages
-    if (pathname?.startsWith("/quiz")) return;
+    setVisible(false);
+    setScrollY(0);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (hideOnThisRoute) return;
 
     const computeThreshold = () => {
       if (!afterElementId) {
@@ -91,11 +95,10 @@ export function StickyQuizCTA({
     computeThreshold();
     window.addEventListener("resize", computeThreshold);
     return () => window.removeEventListener("resize", computeThreshold);
-  }, [pathname, afterElementId, showAfterPx]);
+  }, [hideOnThisRoute, afterElementId, showAfterPx]);
 
-  // Show/hide on scroll + update scrollY
   useEffect(() => {
-    if (pathname?.startsWith("/quiz")) return;
+    if (hideOnThisRoute) return;
 
     let raf = 0;
 
@@ -115,14 +118,13 @@ export function StickyQuizCTA({
       cancelAnimationFrame(raf);
       window.removeEventListener("scroll", onScroll);
     };
-  }, [pathname, threshold]);
+  }, [hideOnThisRoute, threshold]);
+
+  if (hideOnThisRoute) return null;
+  if (!visible) return null;
 
   const showSecondary =
-    !!secondaryHref &&
-    !!secondaryLabel &&
-    scrollY >= (secondaryShowAfterPx ?? 1100);
-
-  if (!visible) return null;
+    !!secondaryHref && !!secondaryLabel && scrollY >= (secondaryShowAfterPx ?? 1100);
 
   const SecondaryLink = showSecondary ? (
     isInternalHref(secondaryHref) ? (
@@ -144,34 +146,19 @@ export function StickyQuizCTA({
     )
   ) : null;
 
+  const primaryClass =
+    "inline-flex shrink-0 items-center justify-center rounded-2xl " +
+    "bg-emerald-700 px-4 py-3 text-sm font-semibold text-white " +
+    "border border-emerald-700 shadow-sm transition " +
+    "hover:bg-emerald-800 hover:border-emerald-800 " +
+    "focus:outline-none focus:ring-2 focus:ring-emerald-300";
+
   const PrimaryLink = isInternalHref(href) ? (
-    <Link
-      href={href}
-      className="
-        inline-flex shrink-0 items-center justify-center
-        rounded-2xl bg-slate-900 px-4 py-3
-        text-sm font-semibold text-white
-        shadow-sm transition
-        hover:bg-slate-800
-        focus:outline-none focus:ring-2 focus:ring-slate-300
-      "
-    >
+    <Link href={href} className={primaryClass}>
       {computedLabel} →
     </Link>
   ) : (
-    <a
-      href={href}
-      className="
-        inline-flex shrink-0 items-center justify-center
-        rounded-2xl bg-slate-900 px-4 py-3
-        text-sm font-semibold text-white
-        shadow-sm transition
-        hover:bg-slate-800
-        focus:outline-none focus:ring-2 focus:ring-slate-300
-      "
-      target="_blank"
-      rel="noreferrer"
-    >
+    <a href={href} className={primaryClass} target="_blank" rel="noreferrer">
       {computedLabel} →
     </a>
   );
@@ -182,9 +169,7 @@ export function StickyQuizCTA({
         <div className="rounded-3xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-900">
-                Main next step
-              </div>
+              <div className="text-xs font-semibold text-slate-900">Main next step</div>
               <div className="truncate text-xs text-slate-600">
                 Quick quiz → matches → provider outreach
               </div>

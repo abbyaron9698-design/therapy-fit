@@ -10,7 +10,8 @@ function cn(...classes: Array<string | false | null | undefined>) {
 export function CredentialsSearchBar({
   initialQuery = "",
   placeholder = "Search a credential (LCSW, PMHNP, ATR-BC, BCBA, OT, SLP)…",
-  action = "/credentials",
+  // ✅ Default includes the fragment so search lands at results
+  action = "/credentials#credentials",
 }: {
   initialQuery?: string;
   placeholder?: string;

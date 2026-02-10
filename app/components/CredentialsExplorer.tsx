@@ -84,18 +84,51 @@ function WhereYoullSeeThis({ children }: { children: React.ReactNode }) {
 
 /** --- Search helpers --- */
 function normalize(s: string) {
-  return s.toLowerCase().trim();
+  return (s ?? "").toLowerCase().trim();
+}
+
+/**
+ * Expand short / common queries so user intent matches better.
+ * This is intentionally small and human-friendly.
+ */
+function expandQuery(q: string) {
+  const raw = normalize(q);
+  if (!raw) return "";
+  const tokens = raw.split(/\s+/).filter(Boolean);
+
+  const extra: string[] = [];
+  for (const t of tokens) {
+    if (t === "art") extra.push("art therapy", "art therapist", "atr", "atr-bc");
+    if (t === "music") extra.push("music therapy", "music therapist", "mt-bc");
+    if (t === "dance") extra.push("dance movement therapy", "bc-dmt", "dmt");
+    if (t === "drama") extra.push("drama therapy", "rdt");
+    if (t === "poetry") extra.push("poetry therapy", "bibliotherapy");
+    if (t === "social") extra.push("social worker", "lcsw", "msw");
+    if (t === "counselor") extra.push("lpc", "lcpc");
+    if (t === "marriage") extra.push("lmft", "mft");
+  }
+
+  return [raw, ...extra].join(" ");
 }
 
 function scoreMatch(query: string, haystack: string) {
   const q = normalize(query);
   const h = normalize(haystack);
   if (!q) return 0;
-  if (h.includes(q)) return 3;
 
+  // strong full-substring match
+  if (h.includes(q)) return 4;
+
+  // token matches (including prefixes)
   const tokens = q.split(/\s+/).filter(Boolean);
   let score = 0;
-  for (const t of tokens) if (h.includes(t)) score += 1;
+  for (const t of tokens) {
+    if (!t) continue;
+    if (h.includes(t)) score += 2;
+    // prefix helps “art” hit “arts”, “psych” hit “psychologist”, etc.
+    else if (t.length >= 3 && h.split(/\W+/).some((w) => w.startsWith(t)))
+      score += 1;
+  }
   return score;
 }
 
@@ -150,41 +183,38 @@ const INDEX: SearchableItem[] = [
     title: "Prescribing psychologist",
     keywords: ["prescribing psychologist", "rxp", "psychopharmacology"],
   },
-  {
-    tab: "prescribers",
-    title: "Expressive therapies (paired)",
-    keywords: [
-      "art therapy",
-      "music therapy",
-      "drama therapy",
-      "dance movement therapy",
-      "expressive therapies",
-    ],
-  },
 
   // creative
   {
     tab: "creative",
     title: "Art Therapist (ATR / ATR-BC)",
-    keywords: ["atr", "atr-bc", "art therapist", "art therapy"],
+    keywords: ["art", "arts", "atr", "atr-bc", "art therapist", "art therapy"],
   },
   {
     tab: "creative",
     title: "Music Therapist (MT-BC)",
-    keywords: ["mt-bc", "music therapist", "music therapy"],
+    keywords: ["music", "mt-bc", "music therapist", "music therapy"],
   },
-  { tab: "creative", title: "Drama Therapist (RDT)", keywords: ["rdt", "drama therapist", "drama therapy"] },
+  {
+    tab: "creative",
+    title: "Drama Therapist (RDT)",
+    keywords: ["drama", "rdt", "drama therapist", "drama therapy"],
+  },
   {
     tab: "creative",
     title: "Dance/Movement Therapist (BC-DMT)",
-    keywords: ["bc-dmt", "dance movement", "dmt", "dance therapist"],
+    keywords: ["dance", "movement", "bc-dmt", "dmt", "dance movement", "dance therapist"],
   },
   {
     tab: "creative",
     title: "Expressive Arts Therapist",
-    keywords: ["expressive arts", "expressive arts therapist", "intermodal", "creative arts therapy"],
+    keywords: ["expressive", "creative", "expressive arts", "intermodal", "creative arts therapy"],
   },
-  { tab: "creative", title: "Poetry/Bibliotherapy", keywords: ["poetry therapy", "bibliotherapy", "writing therapy"] },
+  {
+    tab: "creative",
+    title: "Poetry/Bibliotherapy",
+    keywords: ["poetry", "bibliotherapy", "poetry therapy", "writing therapy"],
+  },
 
   // substance
   {
@@ -204,9 +234,21 @@ const INDEX: SearchableItem[] = [
     title: "Speech-language pathologist (CCC-SLP)",
     keywords: ["slp", "ccc-slp", "speech therapist", "speech-language"],
   },
-  { tab: "other", title: "Board Certified Behavior Analyst (BCBA)", keywords: ["bcba", "aba", "behavior analyst"] },
-  { tab: "other", title: "Peer support specialist", keywords: ["peer support", "peer specialist"] },
-  { tab: "other", title: "Case manager / care coordinator", keywords: ["case manager", "care coordinator", "resources", "referrals"] },
+  {
+    tab: "other",
+    title: "Board Certified Behavior Analyst (BCBA)",
+    keywords: ["bcba", "aba", "behavior analyst"],
+  },
+  {
+    tab: "other",
+    title: "Peer support specialist",
+    keywords: ["peer support", "peer specialist"],
+  },
+  {
+    tab: "other",
+    title: "Case manager / care coordinator",
+    keywords: ["case manager", "care coordinator", "resources", "referrals"],
+  },
 
   // training
   {
@@ -218,8 +260,8 @@ const INDEX: SearchableItem[] = [
 ];
 
 function bestTabForQuery(q: string): TabId | null {
-  const query = normalize(q);
-  if (!query) return null;
+  const query = expandQuery(q);
+  if (!normalize(query)) return null;
 
   const totals: Record<TabId, number> = {
     licensed: 0,
@@ -235,7 +277,6 @@ function bestTabForQuery(q: string): TabId | null {
     totals[item.tab] += scoreMatch(query, h);
   }
 
-  // ✅ Use a loop (not forEach mutation) so TS narrows cleanly
   const tabs = Object.keys(totals) as TabId[];
   let bestTab: TabId | null = null;
   let bestScore = 0;
@@ -305,7 +346,9 @@ function Tabs({
         <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3 shadow-sm">
           <p className="text-xs leading-relaxed text-slate-700">
             Searching for: <strong>{query.trim()}</strong>
-            {resultNote ? <span className="text-slate-600"> — {resultNote}</span> : null}
+            {resultNote ? (
+              <span className="text-slate-600"> — {resultNote}</span>
+            ) : null}
           </p>
         </div>
       ) : null}
@@ -321,7 +364,8 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
     if (best) setTab(best);
   }, [query]);
 
-  const q = normalize(query);
+  const qExpanded = expandQuery(query);
+  const q = normalize(qExpanded);
 
   function matches(title: string, extra: string[] = []) {
     if (!q) return true;
@@ -348,7 +392,8 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
         {tab === "licensed" && (
           <>
             <WhereYoullSeeThis>
-              Private practice, group practices, clinics, schools/universities, and community mental health.
+              Private practice, group practices, clinics, schools/universities, and
+              community mental health.
             </WhereYoullSeeThis>
 
             <div className="grid gap-5 sm:grid-cols-2">
@@ -358,7 +403,8 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
                     <strong>Schooling:</strong> <strong>Master’s</strong> or higher.
                   </p>
                   <p className="mt-2">
-                    Provides psychotherapy and treatment planning. Diagnosis and assessment scope varies by role and state.
+                    Provides psychotherapy and treatment planning. Diagnosis and
+                    assessment scope varies by role and state.
                   </p>
                 </Card>
               )}
@@ -369,7 +415,8 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
                     <strong>Schooling:</strong> <strong>MSW</strong>.
                   </p>
                   <p className="mt-2">
-                    Psychotherapy + systems/resource lens; many practice similarly to counselors in therapy settings.
+                    Psychotherapy + systems/resource lens; many practice similarly
+                    to counselors in therapy settings.
                   </p>
                 </Card>
               )}
@@ -379,7 +426,10 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
                   <p>
                     <strong>Schooling:</strong> <strong>Master’s</strong> or higher.
                   </p>
-                  <p className="mt-2">Specializes in relationships/family systems (also treats individuals).</p>
+                  <p className="mt-2">
+                    Specializes in relationships/family systems (also treats
+                    individuals).
+                  </p>
                 </Card>
               )}
 
@@ -389,7 +439,8 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
                     <strong>Schooling:</strong> <strong>Doctorate</strong>.
                   </p>
                   <p className="mt-2">
-                    Psychotherapy + deeper assessment/testing training (often); some provide formal testing/assessment.
+                    Psychotherapy + deeper assessment/testing training (often); some
+                    provide formal testing/assessment.
                   </p>
                 </Card>
               )}
@@ -399,7 +450,9 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
                 matches(x.title, x.keywords)
               ).length === 0 ? (
                 <Card title="No matches in Licensed therapy" icon="🫧" muted>
-                  Try searching a shorter term like <strong>LCSW</strong>, <strong>LMFT</strong>, or <strong>PhD</strong> — or switch tabs above.
+                  Try searching a shorter term like <strong>LCSW</strong>,{" "}
+                  <strong>LMFT</strong>, or <strong>PhD</strong> — or switch tabs
+                  above.
                 </Card>
               ) : null}
             </div>
@@ -409,57 +462,45 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
         {tab === "prescribers" && (
           <>
             <WhereYoullSeeThis>
-              Outpatient psychiatry clinics, hospitals, integrated primary care, and specialty clinics.
+              Outpatient psychiatry clinics, hospitals, integrated primary care, and
+              specialty clinics.
             </WhereYoullSeeThis>
 
             <div className="grid gap-5 sm:grid-cols-2">
               {matches("Psychiatrist (MD / DO)", ["psychiatrist", "md", "do"]) && (
                 <Card icon="💊" title="Psychiatrist (MD / DO)">
                   <p>
-                    <strong>Schooling:</strong> <strong>Medical school + residency</strong>.
+                    <strong>Schooling:</strong>{" "}
+                    <strong>Medical school + residency</strong>.
                   </p>
-                  <p className="mt-2">Medication management and psychiatric care; psychotherapy varies by clinician.</p>
+                  <p className="mt-2">
+                    Medication management and psychiatric care; psychotherapy varies
+                    by clinician.
+                  </p>
                 </Card>
               )}
 
               {matches("Psychiatric Nurse Practitioner (PMHNP)", ["pmhnp", "np"]) && (
                 <Card icon="🩺" title="Psychiatric Nurse Practitioner (PMHNP)">
                   <p>
-                    <strong>Schooling:</strong> <strong>Master’s/Doctorate in Nursing</strong> + psychiatric specialization.
+                    <strong>Schooling:</strong>{" "}
+                    <strong>Master’s/Doctorate in Nursing</strong> + psychiatric
+                    specialization.
                   </p>
                   <p className="mt-2">Medication management; some also provide therapy (varies).</p>
                 </Card>
               )}
 
-              {matches("Prescribing psychologist", ["prescribing psychologist", "rxp"]) && (
+              {matches("Prescribing psychologist", ["rxp", "prescribing psychologist"]) && (
                 <Card icon="🧾" title="Prescribing psychologist">
                   <p>
-                    <strong>Schooling:</strong> <strong>Doctorate</strong> + additional psychopharmacology training (rules vary).
+                    <strong>Schooling:</strong> <strong>Doctorate</strong> + additional
+                    psychopharmacology training (rules vary).
                   </p>
-                  <p className="mt-2">Not available everywhere. Verify what prescribing authority means in your location.</p>
-                </Card>
-              )}
-
-              {matches("Expressive therapies (not prescribers — but often paired)", [
-                "art therapy",
-                "music therapy",
-                "drama therapy",
-                "dance movement",
-              ]) && (
-                <Card icon="🎨" title="Expressive therapies (not prescribers — but often paired)">
-                  <p>
-                    Many people do medication management with a prescriber and psychotherapy with an expressive therapist
-                    (art/music/drama/dance). If you see both on a team, it’s usually a collaborative model.
+                  <p className="mt-2">
+                    Not available everywhere. Verify what prescribing authority means in
+                    your location.
                   </p>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                    If someone claims both roles, ask what license they practice under for each service.
-                  </p>
-                </Card>
-              )}
-
-              {matches("Psychiatric PA / Primary care (MD/DO/NP)", ["pa", "primary care"]) && (
-                <Card icon="🏥" title="Psychiatric PA / Primary care (MD/DO/NP)">
-                  Medication support and referrals; scope depends on the setting and clinician.
                 </Card>
               )}
 
@@ -468,7 +509,8 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
                 matches(x.title, x.keywords)
               ).length === 0 ? (
                 <Card title="No matches in Prescribers" icon="🫧" muted>
-                  Try <strong>PMHNP</strong>, <strong>psychiatrist</strong>, <strong>MD</strong>, or <strong>medication</strong>.
+                  Try <strong>PMHNP</strong>, <strong>psychiatrist</strong>,{" "}
+                  <strong>MD</strong>, or <strong>medication</strong>.
                 </Card>
               ) : null}
             </div>
@@ -481,48 +523,73 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
               Hospitals, schools, rehab programs, community mental health, specialty clinics, and group programs.
             </WhereYoullSeeThis>
 
-            <div className="grid gap-5">
-              {matches("Expressive & creative arts therapies", [
-                "atr",
-                "atr-bc",
-                "mt-bc",
-                "rdt",
-                "bc-dmt",
-                "expressive",
-              ]) && (
-                <Card icon="🎨" title="Expressive & creative arts therapies">
+            <div className="grid gap-5 sm:grid-cols-2">
+              {matches("Art Therapist (ATR / ATR-BC)", ["art", "atr", "atr-bc", "art therapy"]) && (
+                <Card icon="🎨" title="Art Therapist (ATR / ATR-BC)">
                   <p>
-                    <strong>Schooling:</strong> often a <strong>Master’s</strong> in the specific discipline (varies).
+                    Uses art-making + therapeutic process. In the U.S., <strong>ATR/ATR-BC</strong> are art therapy credentials.
                   </p>
-
-                  <ul className="mt-3 list-disc space-y-2 pl-5">
-                    <li>
-                      <strong>Art Therapist</strong>: ATR / ATR-BC (U.S.; varies by role/state)
-                    </li>
-                    <li>
-                      <strong>Music Therapist</strong>: MT-BC (U.S.)
-                    </li>
-                    <li>
-                      <strong>Drama Therapist</strong>: RDT (U.S.)
-                    </li>
-                    <li>
-                      <strong>Dance/Movement Therapist</strong>: BC-DMT (U.S.)
-                    </li>
-                    <li>
-                      <strong>Expressive Arts Therapist</strong> (varies): verify primary license + training pathway
-                    </li>
-                    <li>
-                      <strong>Poetry/Bibliotherapy</strong> (varies): often a specialization within another profession
-                    </li>
-                  </ul>
-
-                  <p className="mt-3 text-xs leading-relaxed text-slate-600">
-                    Some creative arts therapists are also independently licensed clinicians (LCPC/LCSW/LMFT). Ask what their{" "}
-                    <strong>primary license</strong> is (if any) and what scope they practice under.
+                  <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                    Some art therapists also hold a separate psychotherapy license (LCPC/LCSW/LMFT) depending on state and setting.
                   </p>
                 </Card>
               )}
+
+              {matches("Music Therapist (MT-BC)", ["music", "mt-bc", "music therapy"]) && (
+                <Card icon="🎵" title="Music Therapist (MT-BC)">
+                  <p>
+                    Uses music-based interventions. In the U.S., <strong>MT-BC</strong> is a common credential.
+                  </p>
+                </Card>
+              )}
+
+              {matches("Drama Therapist (RDT)", ["drama", "rdt", "drama therapy"]) && (
+                <Card icon="🎭" title="Drama Therapist (RDT)">
+                  <p>
+                    Uses role-play, improvisation, narrative, and performance-based methods.
+                  </p>
+                </Card>
+              )}
+
+              {matches("Dance/Movement Therapist (BC-DMT)", ["dance", "movement", "bc-dmt", "dmt"]) && (
+                <Card icon="💃" title="Dance/Movement Therapist (BC-DMT)">
+                  <p>
+                    Uses movement and body-based expression as a therapeutic modality.
+                  </p>
+                </Card>
+              )}
+
+              {matches("Expressive Arts Therapist", ["expressive", "creative", "intermodal"]) && (
+                <Card icon="🧶" title="Expressive Arts Therapist">
+                  <p>
+                    Often integrates multiple modalities (art, music, movement, drama). Titles and pathways vary — verify training + primary license.
+                  </p>
+                </Card>
+              )}
+
+              {matches("Poetry/Bibliotherapy", ["poetry", "bibliotherapy", "writing"]) && (
+                <Card icon="📚" title="Poetry/Bibliotherapy">
+                  <p>
+                    Often a specialization within another profession (e.g., therapist, educator, librarian). Verify primary scope.
+                  </p>
+                </Card>
+              )}
+
+              {q &&
+              INDEX.filter((x) => x.tab === "creative").filter((x) =>
+                matches(x.title, x.keywords)
+              ).length === 0 ? (
+                <Card title="No matches in Expressive therapies" icon="🫧" muted>
+                  Try <strong>ATR</strong>, <strong>ATR-BC</strong>, <strong>MT-BC</strong>,{" "}
+                  <strong>RDT</strong>, or <strong>BC-DMT</strong>.
+                </Card>
+              ) : null}
             </div>
+
+            <p className="text-xs leading-relaxed text-slate-600">
+              If someone offers “art therapy” but doesn’t list an art therapy credential or a psychotherapy license,
+              ask what credential they practice under and what scope applies in your state.
+            </p>
           </>
         )}
 
@@ -533,22 +600,12 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
             </WhereYoullSeeThis>
 
             <div className="grid gap-5">
-              {matches("Substance use credentials (LCDC, LADC, CADC, etc.)", ["lcdc", "ladc", "cadc", "mac"]) && (
-                <Card icon="🧷" title="Substance use credentials (LCDC, LADC, CADC, etc.)">
-                  <p>
-                    <strong>Schooling:</strong> varies widely by credential and by state.
-                  </p>
+              {matches("Substance use credentials (LCDC/LADC/CADC…)", ["lcdc", "ladc", "cadc", "mac"]) && (
+                <Card icon="🧷" title="Substance use credentials (LCDC/LADC/CADC…)">
+                  <p><strong>Schooling:</strong> varies widely by credential and state.</p>
                   <p className="mt-2">
                     Indicates substance-use specialization. Confirm scope, supervision rules, and whether they can provide psychotherapy independently where you live.
                   </p>
-
-                  <ul className="mt-3 list-disc space-y-2 pl-5">
-                    <li>
-                      Examples you may see: <strong>LCDC</strong>, <strong>LADC</strong>, <strong>CADC</strong>, <strong>CAADC</strong>,{" "}
-                      <strong>LICDC</strong>, <strong>MAC</strong> (titles vary)
-                    </li>
-                    <li>May be held alongside another license (LCPC/LCSW/LMFT) or as a standalone addiction credential</li>
-                  </ul>
                 </Card>
               )}
             </div>
@@ -570,13 +627,13 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
 
               {matches("Speech-language pathologist (CCC-SLP)", ["slp", "ccc-slp"]) && (
                 <Card icon="🗣️" title="Speech-language pathologist (CCC-SLP)">
-                  Communication, social pragmatics, and feeding/swallowing (can overlap with neurodiversity support).
+                  Communication, social pragmatics, and feeding/swallowing.
                 </Card>
               )}
 
               {matches("Board Certified Behavior Analyst (BCBA)", ["bcba", "aba"]) && (
                 <Card icon="📈" title="Board Certified Behavior Analyst (BCBA)">
-                  Behavior assessment + behavior plans (often in autism services). Ask about approach and values-fit.
+                  Behavior assessment + behavior plans. Ask about approach and values-fit.
                 </Card>
               )}
 
@@ -592,10 +649,6 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
                 </Card>
               )}
             </div>
-
-            <p className="text-xs leading-relaxed text-slate-600">
-              Titles and scope vary by region. When in doubt, ask: “What license do you practice under?” and “What’s your scope in this setting?”
-            </p>
           </>
         )}
 
@@ -617,9 +670,7 @@ export function CredentialsExplorer({ query = "" }: { query?: string }) {
 
               {matches("School counselor", ["school counselor"]) && (
                 <Card icon="🏫" title="School counselor">
-                  <p>
-                    <strong>Schooling:</strong> typically a <strong>Master’s</strong>.
-                  </p>
+                  <p><strong>Schooling:</strong> typically a <strong>Master’s</strong>.</p>
                   <p className="mt-2">School setting support; scope differs from outpatient psychotherapy.</p>
                 </Card>
               )}

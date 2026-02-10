@@ -353,7 +353,7 @@ export default function TrainingTranslator() {
             <div className="mt-5 flex flex-wrap gap-2">
               <a
                 href="/quiz"
-                className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium shadow-sm btn-brand"
+                className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
               >
                 Take the quiz →
               </a>

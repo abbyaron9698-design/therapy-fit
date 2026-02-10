@@ -1,4 +1,5 @@
 // app/questions/page.tsx
+import React from "react";
 import TopTherapyQuestions, { type FaqItem } from "../components/TopTherapyQuestions";
 import { ConsultChecklistCard } from "../components/ConsultChecklistCard";
 
@@ -14,6 +15,24 @@ const linkCls =
 const chipCls =
   "inline-flex items-center justify-center rounded-2xl border px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50";
 
+// Optional depth toggle: keeps the page accessible by default.
+function OptionalDetails({
+  summary = "More details (optional)",
+  children,
+}: {
+  summary?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <summary className="cursor-pointer text-sm font-medium text-slate-700 hover:text-slate-900">
+        {summary}
+      </summary>
+      <div className="mt-3 text-sm leading-relaxed text-slate-700">{children}</div>
+    </details>
+  );
+}
+
 const FAQ: FaqItem[] = [
   // ========== HOW THERAPY WORKS ==========
   {
@@ -24,68 +43,56 @@ const FAQ: FaqItem[] = [
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> Therapy works differently for different people.
+          Therapy is a steady space to understand what’s going on, build support, and try new ways of coping.
         </p>
 
-        <p className="mt-3 text-sm text-slate-700">
-          For many, it helps by offering a steady space to understand patterns, try new ways of coping,
-          and practice responding differently — with support instead of doing it all alone.
-        </p>
-
-        <p className="mt-3 text-sm text-slate-700">
-          You don’t need to know exactly <em>how</em> it will help you before starting.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">What therapy often includes</p>
-        <p className="mt-2 text-sm text-slate-700">
-          Depending on the therapist and approach, sessions might involve:
-        </p>
+        <p className="mt-3 text-sm text-slate-700">Most sessions include some mix of:</p>
         <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>noticing patterns in thoughts, emotions, or relationships</li>
-          <li>learning practical tools for stress, emotions, or daily life</li>
-          <li>practicing new responses in a safe setting</li>
-          <li>making sense of experiences at your own pace</li>
+          <li>noticing patterns (thoughts, feelings, relationships)</li>
+          <li>learning tools for stress, emotions, or daily life</li>
+          <li>practicing new responses with support</li>
+          <li>making sense of experiences at your pace</li>
         </ul>
 
         <p className="mt-3 text-sm text-slate-700">
-          Some therapists focus more on skills and structure. Others focus more on emotions,
-          relationships, or the body. Many blend these over time.
-        </p>
-
-        <p className="mt-3 text-sm text-slate-700">There isn’t one “right” way for therapy to look.</p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">If you want a starting point</p>
-        <p className="mt-2 text-sm text-slate-700">You don’t need to figure this out on your own.</p>
-
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>
-            The{" "}
-            <a className={linkCls} href="/quiz">
-              quiz
-            </a>{" "}
-            can help narrow down therapy styles based on how you tend to think, cope, and process.
-          </li>
-          <li>
-            The{" "}
-            <a className={linkCls} href="/therapies">
-              therapy styles library
-            </a>{" "}
-            explains what sessions often feel like in real life — not just textbook definitions.
-          </li>
-        </ul>
-
-        <p className="mt-3 text-sm text-slate-700">
-          If this feels like too much right now, you can come back later.
+          Some therapists are more structured and skills-based. Others are more open and exploratory. Many blend both.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
+          <a href="/care-levels" className={chipCls}>
+            Levels of care →
+          </a>
           <a href="/quiz" className={chipCls}>
-            Take the quiz →
+            Start the quiz →
           </a>
           <a href="/therapies" className={chipCls}>
             Browse therapy styles →
           </a>
         </div>
+      </>
+    ),
+  },
+
+  {
+    id: "where-do-people-start",
+    category: "How therapy works",
+    q: "Where do people usually start in therapy?",
+    icon: "🧭",
+    a: (
+      <>
+        <p className="text-sm text-slate-700">
+          Many people start by building steadiness: sleep, stress, overwhelm, mood, and day-to-day coping. Some people
+          start by understanding patterns or relationships. Others start with the body (tension, shutdown, panic). Where
+          you begin can change over time — and a good therapist helps you find the pace that fits.
+        </p>
+
+        <p className="mt-4 text-sm text-slate-700">
+          If you want a simple starting point, the{" "}
+          <a className={linkCls} href="/quiz">
+            quiz
+          </a>{" "}
+          can help you explore a few therapy styles to try first.
+        </p>
       </>
     ),
   },
@@ -99,42 +106,23 @@ const FAQ: FaqItem[] = [
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> You don’t have to be “at rock bottom” to consider therapy.
+          Therapy can help when something feels hard to carry alone — even if life still looks “fine” from the outside.
         </p>
 
-        <p className="mt-3 text-sm text-slate-700">
-          For many people, therapy becomes useful when something feels persistent, painful,
-          or harder to manage alone.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">Common signs people notice</p>
-        <p className="mt-2 text-sm text-slate-700">You might consider therapy if:</p>
+        <p className="mt-3 text-sm text-slate-700">People often start when they notice:</p>
         <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>you feel stuck in the same patterns</li>
-          <li>stress, mood, or anxiety is affecting sleep, focus, or relationships</li>
-          <li>you’re functioning, but it doesn’t feel sustainable</li>
-          <li>something feels “off,” even if you can’t explain it clearly</li>
+          <li>the same patterns keep repeating</li>
+          <li>stress or anxiety is affecting sleep, focus, or relationships</li>
+          <li>they’re functioning, but it feels unsustainable</li>
+          <li>something feels off and they want clarity</li>
         </ul>
 
-        <p className="mt-3 text-sm text-slate-700">None of these need to be extreme to matter.</p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">A gentle rule of thumb</p>
-        <p className="mt-2 text-sm text-slate-700">
-          If something keeps showing up — and you’ve tried handling it on your own — therapy is a reasonable next step.
-          You don’t need a diagnosis or a crisis to start.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">If you want help deciding</p>
-        <p className="mt-2 text-sm text-slate-700">
-          The{" "}
+        <p className="mt-4 text-sm text-slate-700">
+          If you want help choosing a starting point, the{" "}
           <a className={linkCls} href="/quiz">
             quiz
           </a>{" "}
-          can give you a starting point without overthinking it.
-        </p>
-
-        <p className="mt-3 text-sm text-slate-700">
-          If this question brings up doubt, that’s common. You can come back to it.
+          can help you narrow it down.
         </p>
       </>
     ),
@@ -148,38 +136,28 @@ const FAQ: FaqItem[] = [
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> This is very common — and it usually doesn’t mean therapy “doesn’t work.”
+          That’s common. Often it means the fit (style, pace, structure) wasn’t right.
         </p>
 
-        <p className="mt-3 text-sm text-slate-700">
-          More often, it means the <strong>fit</strong> wasn’t right.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">What mismatch can look like</p>
-        <p className="mt-2 text-sm text-slate-700">For example:</p>
+        <p className="mt-3 text-sm text-slate-700">A mismatch can look like:</p>
         <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>you wanted tools and structure, but sessions stayed open-ended</li>
-          <li>you had strong body symptoms, but therapy stayed talk-focused</li>
-          <li>you wanted trauma-informed pacing, but things moved too fast</li>
-          <li>you wanted a more active therapist, but sessions felt passive</li>
+          <li>you wanted tools, but sessions stayed vague</li>
+          <li>you had strong body symptoms, but therapy stayed talk-only</li>
+          <li>you wanted slower pacing, but things moved fast</li>
+          <li>you wanted an active therapist, but it felt passive</li>
         </ul>
 
-        <p className="mt-3 text-sm text-slate-700">These are about <strong>fit</strong>, not failure.</p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">If you want a smarter retry</p>
-        <p className="mt-2 text-sm text-slate-700">
-          Use{" "}
+        <p className="mt-4 text-sm text-slate-700">
+          The{" "}
           <a className={linkCls} href="/quiz">
-            the quiz
+            quiz
           </a>{" "}
-          to get a better shortlist, then explore options in the{" "}
+          can help you pick a better shortlist, and the{" "}
           <a className={linkCls} href="/therapies">
             therapy styles library
-          </a>
-          .
+          </a>{" "}
+          can help you compare what sessions feel like.
         </p>
-
-        <p className="mt-3 text-sm text-slate-700">You’re allowed to be selective this time.</p>
       </>
     ),
   },
@@ -193,39 +171,21 @@ const FAQ: FaqItem[] = [
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> For many people, fit matters as much as the therapy approach itself.
+          Fit matters. The same approach can feel very different depending on the therapist.
         </p>
 
-        <p className="mt-3 text-sm text-slate-700">
-          The same therapy can feel very different depending on the therapist and how sessions are structured.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">Fit often shows up as:</p>
+        <p className="mt-3 text-sm text-slate-700">Fit often looks like:</p>
         <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
           <li>feeling respected</li>
-          <li>having a shared sense of direction</li>
-          <li>being able to ask questions or give feedback</li>
+          <li>having a shared direction</li>
+          <li>being able to ask questions</li>
           <li>pacing that matches your needs</li>
         </ul>
 
-        <p className="mt-3 text-sm text-slate-700">
-          Comfort isn’t required right away — <strong>safety and collaboration matter more.</strong>
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">A helpful check-in</p>
-        <p className="mt-2 text-sm text-slate-700">Instead of asking “Is this perfect?” try:</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>“Do I feel safe enough to keep showing up?”</li>
-          <li>“Do I understand what we’re working toward?”</li>
-          <li>“Can I imagine being more honest over time?”</li>
-        </ul>
-
-        <p className="mt-3 text-sm text-slate-700">Those answers can change as therapy progresses.</p>
-
         <p className="mt-4 text-sm text-slate-700">
-          If you want help matching to a style (structured vs open-ended, skills vs exploratory), start with{" "}
+          If you want help narrowing down your style, start with the{" "}
           <a className={linkCls} href="/quiz">
-            the quiz
+            quiz
           </a>
           .
         </p>
@@ -240,47 +200,24 @@ const FAQ: FaqItem[] = [
     icon: "🧩",
     a: (
       <>
-        <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> You don’t need therapy jargon to choose well.
-        </p>
+        <p className="text-sm text-slate-700">Start with what you want help with and how you like to work.</p>
 
-        <p className="mt-3 text-sm text-slate-700">
-          Most people find a good fit by noticing what they want help with — and how they tend to process things.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">What people often match on</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>
-            <strong>what they want help with</strong> (stress, relationships, trauma, motivation, identity)
-          </li>
-          <li>
-            <strong>how they process</strong> (talking, doing, reflecting, creating)
-          </li>
-          <li>
-            <strong>how structured they want sessions</strong> (tools and homework vs open exploration)
-          </li>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
+          <li>Do you want more structure or more space?</li>
+          <li>Do you want skills, insight, or both?</li>
+          <li>Do you want to focus on now, the past, or a mix?</li>
         </ul>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">A helpful reframe</p>
-        <p className="mt-2 text-sm text-slate-700">Instead of “What therapy is right?” try:</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>“Do I want more structure or more space?”</li>
-          <li>“Do I want skills, insight, or both?”</li>
-          <li>“Do I want to focus on the present, the past, or a mix?”</li>
-        </ul>
-
-        <p className="mt-3 text-sm text-slate-700">Those answers can change over time.</p>
 
         <p className="mt-4 text-sm text-slate-700">
-          The fastest way to narrow it down is{" "}
+          The{" "}
           <a className={linkCls} href="/quiz">
-            the quiz
+            quiz
           </a>{" "}
-          — then use the{" "}
+          can help you narrow options, then the{" "}
           <a className={linkCls} href="/therapies">
             therapy styles library
           </a>{" "}
-          to understand what sessions often feel like.
+          can help you compare what sessions feel like.
         </p>
       </>
     ),
@@ -294,25 +231,14 @@ const FAQ: FaqItem[] = [
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> That’s allowed. You don’t have to start with your history for therapy to be helpful.
+          You can start with what’s happening right now: stress, emotions, relationships, coping, and goals.
         </p>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">What therapy can focus on instead</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>coping skills and emotional regulation</li>
-          <li>stress, anxiety, or burnout in daily life</li>
-          <li>relationship patterns happening now</li>
-          <li>practical problem-solving or goals</li>
-        </ul>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">About pacing</p>
-        <p className="mt-2 text-sm text-slate-700">
-          For many people, talking about the past becomes easier after trust and stability are built.
-          A therapist should respect your pace — including if “not yet” is your answer.
+        <p className="mt-3 text-sm text-slate-700">
+          Many people talk about their past later, after trust and steadiness are stronger.
         </p>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">If it helps to say it out loud</p>
-        <p className="mt-2 text-sm text-slate-700">
+        <p className="mt-4 text-sm text-slate-700">
           <strong>“I want help with what’s happening now. I’m not ready to go into my history yet.”</strong>
         </p>
       </>
@@ -326,33 +252,26 @@ const FAQ: FaqItem[] = [
     icon: "📅",
     a: (
       <>
-        <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> You don’t need a perfect script or your full story. A few clear steps are enough.
-        </p>
+        <p className="text-sm text-slate-700">A simple way to start:</p>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">A simple way to start</p>
-        <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-slate-700">
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
           <li>Choose 2–5 therapists you’d be open to</li>
           <li>Use their website, intake form, or phone call</li>
           <li>Share what you want help with in 1–2 sentences</li>
           <li>Ask about availability and cost</li>
         </ol>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">What to say (brief is fine)</p>
-        <p className="mt-2 text-sm text-slate-700">
-          “I’m looking for therapy for stress and relationships and wanted to ask about availability and fees.”
+        <p className="mt-4 text-sm text-slate-700">
+          Example message: “I’m looking for therapy for stress and relationships and wanted to ask about availability and
+          fees.”
         </p>
 
-        <p className="mt-3 text-sm text-slate-700">You don’t need to explain everything up front.</p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">If reaching out feels hard</p>
-        <p className="mt-2 text-sm text-slate-700">
-          Freezing, procrastinating, or overthinking this step is very common.
-          If it helps, use your{" "}
+        <p className="mt-4 text-sm text-slate-700">
+          If it helps, you can use your{" "}
           <a className={linkCls} href="/quiz">
             quiz results
           </a>{" "}
-          as a starting point.
+          as your starting point.
         </p>
       </>
     ),
@@ -366,41 +285,19 @@ const FAQ: FaqItem[] = [
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> Therapy can be uncomfortable — but you should still feel safe, respected, and oriented.
+          It’s normal for therapy to feel hard sometimes. You should still feel respected and have a sense of direction.
         </p>
 
-        <p className="mt-3 text-sm text-slate-700">Feeling challenged is different from feeling dismissed or lost.</p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">What growth discomfort often feels like</p>
+        <p className="mt-3 text-sm text-slate-700">Helpful questions to ask:</p>
         <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>talking about things you usually avoid</li>
-          <li>noticing patterns you hadn’t seen before</li>
-          <li>feeling emotions more clearly</li>
-        </ul>
-
-        <p className="mt-3 text-sm text-slate-700">
-          This can feel hard <em>and</em> supportive at the same time.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">Signs it may be worth addressing</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>you feel unclear what therapy is for</li>
-          <li>sessions feel repetitive without direction</li>
-          <li>you don’t feel able to give feedback</li>
-        </ul>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">When switching makes sense</p>
-        <p className="mt-2 text-sm text-slate-700">
-          Switching can be reasonable if boundaries are crossed, you feel judged or coerced,
-          or your concerns are consistently dismissed.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">If you’re unsure</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>“What approach are we using right now?”</li>
-          <li>“What would progress look like in a month?”</li>
+          <li>“What are we working toward?”</li>
+          <li>“What would progress look like soon?”</li>
           <li>“Can we clarify goals together?”</li>
         </ul>
+
+        <p className="mt-4 text-sm text-slate-700">
+          If you feel repeatedly dismissed or unsafe, it can make sense to look for a better fit.
+        </p>
       </>
     ),
   },
@@ -412,31 +309,14 @@ const FAQ: FaqItem[] = [
     icon: "🖥️",
     a: (
       <>
-        <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> For many people and many concerns, yes.
-        </p>
+        <p className="text-sm text-slate-700">For many people and many concerns, yes. Preferences vary.</p>
 
-        <p className="mt-3 text-sm text-slate-700">Both formats can be effective — and preferences vary.</p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">What online therapy can offer</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>easier scheduling</li>
-          <li>no commute</li>
-          <li>access from your own space</li>
-          <li>more options if local care is limited</li>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
+          <li>Online can be easier to schedule and access.</li>
+          <li>In-person can feel more grounded and separate from home life.</li>
         </ul>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">What in-person therapy can offer</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>a dedicated space away from daily life</li>
-          <li>physical presence and shared environment</li>
-          <li>fewer distractions for some people</li>
-        </ul>
-
-        <p className="mt-4 text-sm text-slate-700">
-          It can help to ask: “Where do I feel more at ease talking?” and “What fits my life right now?”
-          You’re allowed to change formats later.
-        </p>
+        <p className="mt-4 text-sm text-slate-700">A helpful check: where do you feel more at ease talking right now?</p>
       </>
     ),
   },
@@ -449,39 +329,18 @@ const FAQ: FaqItem[] = [
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> It means talking to more than one therapist before deciding.
+          It means talking to more than one therapist before choosing. That’s normal.
         </p>
 
-        <p className="mt-3 text-sm text-slate-700">
-          That’s normal — and often helpful — especially when you’re investing time, energy, and money.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">What this usually looks like</p>
+        <p className="mt-3 text-sm text-slate-700">People often compare:</p>
         <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>scheduling 1–3 consult calls or intakes</li>
-          <li>comparing how each therapist communicates</li>
-          <li>noticing differences in style, pacing, and clarity</li>
-        </ul>
-
-        <p className="mt-3 text-sm text-slate-700">You’re not wasting anyone’s time by doing this.</p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">What you’re actually comparing</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>who you feel understood by</li>
+          <li>who they feel understood by</li>
           <li>who explains things clearly</li>
-          <li>who feels collaborative rather than directive</li>
+          <li>who feels collaborative</li>
         </ul>
 
         <p className="mt-4 text-sm text-slate-700">
-          If you don’t know what to ask, the{" "}
-          <a className={linkCls} href="/credentials">
-            credentials &amp; training page
-          </a>{" "}
-          can help.
-        </p>
-
-        <p className="mt-3 text-sm text-slate-700">
-          Want a quick checklist you can tap through during a consult? Use the{" "}
+          Want a quick checklist for consults? Use the{" "}
           <a className={linkCls} href="/consult-checklist">
             consult checklist
           </a>
@@ -503,19 +362,13 @@ const FAQ: FaqItem[] = [
     icon: "🧾",
     a: (
       <>
-        <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> The cost of therapy depends on location, provider fees, and insurance rules.
-        </p>
-
-        <p className="mt-3 text-sm text-slate-700">
-          Insurance can reduce costs — but it varies widely, even within the same company.
-        </p>
+        <p className="text-sm text-slate-700">Cost depends on location, provider fees, and your insurance plan.</p>
 
         <div className="mt-4 rounded-2xl border bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-900">The two questions that usually matter most</p>
+          <p className="text-sm font-semibold text-slate-900">Two questions to ask</p>
           <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
             <li>
-              <strong>Is this provider in-network with my plan?</strong>
+              <strong>Is this provider in-network?</strong>
             </li>
             <li>
               <strong>What will I pay per session?</strong> (copay/coinsurance, deductible rules)
@@ -523,11 +376,14 @@ const FAQ: FaqItem[] = [
           </ul>
         </div>
 
-        <p className="mt-3 text-sm text-slate-700">
-          If something feels confusing, it’s okay to ask the provider or insurer to explain it again.
-        </p>
+        <p className="mt-3 text-sm text-slate-700">If it’s confusing, it’s okay to ask for a clear breakdown.</p>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">If you want reliable basics</p>
+        <OptionalDetails>
+          Plans can differ in deductibles, coinsurance, and session limits. Asking a provider’s office for a “good faith
+          estimate” or an estimated per-session cost can help you plan.
+        </OptionalDetails>
+
+        <p className="mt-4 text-sm font-semibold text-slate-900">Reliable basics</p>
         <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
           <li>
             <a
@@ -536,7 +392,7 @@ const FAQ: FaqItem[] = [
               target="_blank"
               rel="noreferrer"
             >
-              Healthcare.gov: mental health &amp; substance use coverage
+              Healthcare.gov: mental health coverage
             </a>
           </li>
           <li>
@@ -556,7 +412,7 @@ const FAQ: FaqItem[] = [
               target="_blank"
               rel="noreferrer"
             >
-              Medicaid: behavioral health services overview
+              Medicaid: behavioral health overview
             </a>
           </li>
         </ul>
@@ -571,35 +427,18 @@ const FAQ: FaqItem[] = [
     icon: "💸",
     a: (
       <>
-        <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> You still have options. Many people find support through lower-cost routes.
-        </p>
+        <p className="text-sm text-slate-700">Many people use lower-cost routes, like:</p>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">Common ways people reduce cost</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>
-            <strong>Sliding scale</strong>: ask “Do you have sliding-scale spots?”
-          </li>
-          <li>
-            <strong>Group therapy</strong>: often cheaper than individual
-          </li>
-          <li>
-            <strong>Training clinics</strong>: supervised interns; lower fees
-          </li>
-          <li>
-            <strong>Community mental health</strong>: income-based programs
-          </li>
-          <li>
-            <strong>EAP</strong> through work: short-term counseling + referrals
-          </li>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
+          <li>sliding scale spots</li>
+          <li>group therapy</li>
+          <li>training clinics (supervised interns)</li>
+          <li>community mental health programs</li>
+          <li>EAP through work</li>
         </ul>
 
-        <p className="mt-3 text-sm text-slate-700">
-          Needing affordable care is not a personal failure. Access barriers are common — and navigating them takes effort.
-        </p>
-
         <p className="mt-4 text-sm text-slate-700">
-          For more routes beyond therapy, visit{" "}
+          For more support options beyond therapy, visit{" "}
           <a className={linkCls} href="/support">
             Community Support and Services
           </a>
@@ -617,12 +456,7 @@ const FAQ: FaqItem[] = [
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> You can still access care — but focusing on lower-cost options often helps.
-        </p>
-
-        <p className="mt-3 text-sm text-slate-700">
-          People without insurance often look for sliding-scale providers, group therapy, training clinics,
-          and community-based services.
+          Many people look for sliding scale providers, group therapy, training clinics, and community-based services.
         </p>
 
         <p className="mt-4 text-sm text-slate-700">
@@ -630,7 +464,7 @@ const FAQ: FaqItem[] = [
           <a className={linkCls} href="/support">
             Community Support and Services
           </a>{" "}
-          page can also help you find non-therapy supports that still make a meaningful difference.
+          page can help you find options.
         </p>
       </>
     ),
@@ -644,23 +478,20 @@ const FAQ: FaqItem[] = [
     icon: "🧷",
     a: (
       <>
-        <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> It depends. Rules vary by location, setting, and insurance.
-        </p>
+        <p className="text-sm text-slate-700">It depends on location, setting, and insurance.</p>
 
         <p className="mt-3 text-sm text-slate-700">
-          Confidentiality for minors can depend on state laws, whether therapy is through a school or clinic,
-          and how insurance billing works.
+          A simple question to ask a clinic is:{" "}
+          <strong>“What are your confidentiality rules for minors, and what shows up on insurance paperwork?”</strong>
         </p>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">A practical step</p>
-        <p className="mt-2 text-sm text-slate-700">
-          You can ask a clinic directly:{" "}
-          <strong>“What are your confidentiality rules for minors, and what appears on insurance paperwork?”</strong>
-        </p>
+        <OptionalDetails>
+          Some states allow minors to consent to therapy in certain situations. Insurance billing can affect what
+          information appears on policyholder statements.
+        </OptionalDetails>
 
-        <p className="mt-3 text-sm text-slate-700">
-          If you’re choosing a provider, the{" "}
+        <p className="mt-4 text-sm text-slate-700">
+          The{" "}
           <a className={linkCls} href="/credentials">
             credentials &amp; training page
           </a>{" "}
@@ -677,19 +508,15 @@ const FAQ: FaqItem[] = [
     icon: "🗺️",
     a: (
       <>
-        <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> Sometimes it helps to widen the search. Therapy Fit is growing — and other tools can complement it.
-        </p>
-
-        <p className="mt-4 text-sm font-semibold text-slate-900">Places people often look</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>your insurance directory (if you have coverage)</li>
-          <li>major directories (filter carefully by specialty/training)</li>
-          <li>referrals from clinicians you trust</li>
-          <li>specialty clinics (trauma, OCD/ERP, couples methods)</li>
+        <p className="text-sm text-slate-700">A wider search can help. People often use:</p>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
+          <li>their insurance directory</li>
+          <li>major directories (filtered by specialty/training)</li>
+          <li>referrals from clinicians they trust</li>
+          <li>specialty clinics (ERP/exposure-focused, trauma-focused, couples)</li>
         </ul>
 
-        <p className="mt-3 text-sm text-slate-700">
+        <p className="mt-4 text-sm text-slate-700">
           If cost is the barrier, jump to{" "}
           <a className={linkCls} href="#cant-afford">
             lower-cost options
@@ -707,20 +534,15 @@ const FAQ: FaqItem[] = [
     icon: "🧑‍🤝‍🧑",
     a: (
       <>
-        <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> You can’t force someone — but you can make it easier.
-        </p>
+        <p className="text-sm text-slate-700">Care + small steps help most.</p>
 
-        <p className="mt-4 text-sm font-semibold text-slate-900">What often helps</p>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>express care without pressure</li>
-          <li>offer a small next step (“one consult call”)</li>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
+          <li>say what you notice and why you care</li>
+          <li>offer one small next step (one consult call)</li>
           <li>help with logistics or drafting a message</li>
         </ul>
 
-        <p className="mt-3 text-sm text-slate-700">
-          It’s okay if they’re not ready yet. Sometimes knowing support is available matters more than immediate action.
-        </p>
+        <p className="mt-4 text-sm text-slate-700">Sometimes knowing support is available matters more than moving fast.</p>
       </>
     ),
   },
@@ -730,22 +552,44 @@ const FAQ: FaqItem[] = [
     category: "About mental health content online",
     q: "What is TikTok therapy — and why isn’t it listed here?",
     icon: "📱",
-    // --- TikTok therapy ---
-a: (
-  <>
-    <p className="text-sm text-slate-700">
-      TikTok therapy is short-form mental health content (videos, tips, “signs you have ___,” coping hacks)
-      shared on social media — often by creators who may or may not be clinically trained.
-    </p>
+    a: (
+      <>
+        <p className="text-sm text-slate-700">
+          “TikTok therapy” is short-form mental health content on social media — quick tips, “signs you have ___,” coping
+          hacks, and therapy language. Some creators are trained clinicians; many are not. And even when someone is
+          credentialed, short videos can’t assess your full context or safely tailor guidance to you.
+        </p>
 
-    <p className="mt-3 text-sm text-slate-700">
-      Some content can be validating or give people language for their experience. But it can also oversimplify,
-      encourage self-diagnosis, or present “one-size-fits-all” advice without context. Therapy Fit focuses on
-      information that helps you choose care responsibly (approaches, what sessions feel like, and how to evaluate training).
-    </p>
-  </>
-),
+        <p className="mt-3 text-sm text-slate-700">
+          Some content can still be helpful: it can give you language for what you’re feeling, introduce coping tools,
+          or help you feel less alone. The problem is when content turns into certainty — like diagnosing strangers, or
+          making broad claims that “this always means ___.”
+        </p>
 
+        <p className="mt-3 text-sm text-slate-700">
+          Therapy Fit focuses on tools that help you choose care well: understanding therapy styles, what sessions feel
+          like, and how training and scope actually work — so you can make decisions that fit you (not a generic video).
+        </p>
+
+        <OptionalDetails summary="A quick way to use content safely (optional)">
+          <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
+            <li>
+              Treat videos as <strong>ideas</strong>, not conclusions.
+            </li>
+            <li>
+              Be cautious with content that claims certainty, especially diagnosis-style content.
+            </li>
+            <li>
+              If something resonates, bring it to a clinician:{" "}
+              <strong>“I saw this concept — can we explore whether it fits my situation?”</strong>
+            </li>
+            <li>
+              If content spikes panic, shame, or spiraling, that’s a sign to pause and step away.
+            </li>
+          </ul>
+        </OptionalDetails>
+      </>
+    ),
   },
 
   {
@@ -753,22 +597,41 @@ a: (
     category: "About mental health content online",
     q: "What is an armchair therapist?",
     icon: "🪑",
-    // --- Armchair therapist ---
-a: (
-  <>
-    <p className="text-sm text-slate-700">
-      An armchair therapist is someone who gives confident “clinical” judgments about others — diagnosing,
-      labeling, or interpreting behavior — without real context, consent, or accountability.
-    </p>
+    a: (
+      <>
+        <p className="text-sm text-slate-700">
+          An armchair therapist is someone who labels, diagnoses, or interprets another person with high certainty —
+          without enough context, consent, or responsibility. This happens online and in real life.
+        </p>
 
-    <p className="mt-3 text-sm text-slate-700">
-      The issue isn’t curiosity — it’s certainty. Real therapy involves training, ethics, and responsibility
-      for harm: privacy, informed consent, scope of practice, and a relationship where the person can disagree,
-      ask questions, and set boundaries.
-    </p>
-  </>
-),
+        <p className="mt-3 text-sm text-slate-700">
+          The issue isn’t curiosity or noticing patterns — it’s the certainty. Helpful support leaves room for nuance,
+          questions, and your lived experience.
+        </p>
 
+        <OptionalDetails summary="How to tell the difference (optional)">
+          <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
+            <li>
+              <strong>Helpful:</strong> “This might be a pattern — want to explore it?”
+            </li>
+            <li>
+              <strong>Not helpful:</strong> “You definitely have ___.”
+            </li>
+            <li>
+              <strong>Helpful:</strong> “I could be wrong, but here’s one possibility.”
+            </li>
+            <li>
+              <strong>Not helpful:</strong> using diagnosis language as a weapon, insult, or certainty.
+            </li>
+          </ul>
+
+          <p className="mt-3 text-sm text-slate-700">
+            If something you see online makes you feel boxed in, minimized, or reduced to a label, it can help to pause,
+            ground yourself, and check in with a trained clinician who can hold more context.
+          </p>
+        </OptionalDetails>
+      </>
+    ),
   },
 
   // ========== SAFETY ==========
@@ -780,33 +643,29 @@ a: (
     a: (
       <>
         <p className="text-sm text-slate-700">
-          <strong>Short answer:</strong> Therapy is ongoing care — not emergency care.
+          If safety feels urgent, faster support helps — meaning you shouldn’t have to wait days or weeks to get help,
+          and you deserve more support than “try to hold on until your next appointment.”
         </p>
 
         <p className="mt-3 text-sm text-slate-700">
-          If safety feels like an immediate concern, you deserve faster support than a weekly session cadence.
+          “Urgent” can look like: feeling at risk of harming yourself or someone else, being unable to keep yourself
+          safe, feeling out of control, severe substance-related risk, or not being able to manage basic needs like
+          sleep, eating, or daily functioning.
         </p>
 
         <p className="mt-3 text-sm text-slate-700">
-          Sometimes the right next step isn’t emergency care — but a{" "}
-          <strong>higher level of support</strong> than weekly therapy.
+          Sometimes the best next step is more support than weekly therapy (IOP/PHP), with more structure and check-ins.
+          Other times, the best next step is crisis support right away.
         </p>
 
-        <p className="mt-3 text-sm text-slate-700">
-          Programs like <strong>Intensive Outpatient (IOP)</strong> or{" "}
-          <strong>Partial Hospitalization (PHP)</strong> offer more structure and frequency while still letting you live
-          at home.
-        </p>
-
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-700">
-          <li>multiple sessions per week</li>
-          <li>group + individual support</li>
-          <li>more hands-on skill-building and monitoring</li>
-        </ul>
-
-        <p className="mt-3 text-sm text-slate-700">
-          These can be a good fit if symptoms feel overwhelming between sessions — even if you’re not in immediate danger.
-        </p>
+        <OptionalDetails summary="What higher support can include (optional)">
+          <ul className="list-disc space-y-2 pl-5">
+            <li>multiple sessions per week</li>
+            <li>group support plus individual support</li>
+            <li>more hands-on skill-building and monitoring</li>
+            <li>help stabilizing routines (sleep, eating, safety planning)</li>
+          </ul>
+        </OptionalDetails>
 
         <div className="mt-4 flex flex-wrap gap-2">
           <a
@@ -814,6 +673,9 @@ a: (
             className="inline-flex items-center justify-center rounded-2xl border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
           >
             Crisis resources →
+          </a>
+          <a href="/care-levels" className={chipCls}>
+            Care levels (IOP vs PHP) →
           </a>
           <a href="/support" className={chipCls}>
             Community support and services →
@@ -845,22 +707,61 @@ export default function QuestionsPage() {
           <div className="mt-6 flex flex-wrap gap-2">
             <a
               href="/quiz"
-              className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium shadow-sm btn-brand"
+              className="
+                inline-flex items-center justify-center
+                rounded-xl px-5 py-3
+                text-sm font-medium
+                bg-emerald-500 text-slate-950
+                hover:bg-emerald-400
+                focus:outline-none focus:ring-2 focus:ring-emerald-500/40
+              "
             >
               Start the quiz →
             </a>
+
             <a href="/therapies" className={chipCls}>
               Browse therapy styles →
             </a>
+
             <a href="/credentials" className={chipCls}>
               Understanding credentials &amp; training →
             </a>
+
             <a href="/consult-checklist" className={chipCls}>
               Consult checklist →
             </a>
+
             <a href="/support" className={chipCls}>
               Community support and services →
             </a>
+          </div>
+
+          {/* Decision guides (secondary-but-important) */}
+          <div className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-6">
+            <div className="flex items-start gap-3">
+              <span
+                aria-hidden
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border bg-white text-lg"
+              >
+                🧭
+              </span>
+
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-slate-900">Decision guides</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Quick pages that help you choose a starting point when you feel overwhelmed.
+                </p>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <a href="/care-levels" className={chipCls}>
+                    Care levels (weekly vs group vs IOP/PHP) →
+                  </a>
+                  <a href="/consult-checklist" className={chipCls}>
+                    Consult checklist →
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
 
           <TopTherapyQuestions items={FAQ} />
