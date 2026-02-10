@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { GlobalFeedback } from "./components/GlobalFeedback";
 import { StickyQuizCTA } from "./components/StickyQuizCTA";
 import { SiteHeader } from "./components/SiteHeader";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata = {
   title: "Therapy Fit",
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </div>
           </footer>
         </div>
+        <Analytics />
       </body>
     </html>
   );
