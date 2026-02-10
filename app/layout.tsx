@@ -1,6 +1,8 @@
 // app/layout.tsx
 import "./globals.css";
 import type { ReactNode } from "react";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GlobalFeedback } from "./components/GlobalFeedback";
 import { StickyQuizCTA } from "./components/StickyQuizCTA";
 import { SiteHeader } from "./components/SiteHeader";
@@ -12,7 +14,6 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  // Server-rendered value (no client recompute during hydration)
   const year = new Date().getFullYear();
 
   return (
@@ -22,13 +23,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         suppressHydrationWarning
       >
         <div className="flex min-h-screen flex-col">
-          {/* Header */}
           <SiteHeader />
-
-          {/* Main */}
           <main className="flex-1">{children}</main>
 
-          {/* Sticky mobile CTA */}
           <StickyQuizCTA
             href="/quiz"
             secondaryHref="/toolkit"
@@ -36,10 +33,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             secondaryShowAfterPx={1100}
           />
 
-          {/* Global Feedback (bottom of every page, above footer) */}
           <GlobalFeedback />
 
-          {/* Footer */}
           <footer className="border-t border-slate-200 bg-slate-50 px-6 py-8">
             <div className="mx-auto max-w-6xl text-center text-xs text-slate-500">
               <div className="flex flex-wrap justify-center gap-4">
@@ -72,10 +67,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 additional states is planned.
               </p>
 
-              <p className="mt-2 text-[11px] text-slate-400">© {year} Therapy Fit</p>
+              <p className="mt-2 text-[11px] text-slate-400">
+                © {year} Therapy Fit
+              </p>
             </div>
           </footer>
         </div>
+
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
