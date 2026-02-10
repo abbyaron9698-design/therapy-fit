@@ -8,7 +8,7 @@ export default function FeedbackPage() {
       </p>
 
       <a
-        href="PASTE_YOUR_GOOGLE_FORM_LINK_HERE"
+        href="https://docs.google.com/forms/d/e/1FAIpQLSe9xk0qdG0vYgFfFzxLY5NhyqWVZAPgRbMYMGieDhFzaX1Kjg/viewform?usp=sharing&ouid=101944934837895852261"
         target="_blank"
         rel="noopener noreferrer"
         className="mt-6 inline-block rounded-xl bg-slate-900 px-6 py-3 text-white"
