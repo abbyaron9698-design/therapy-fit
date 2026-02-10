@@ -184,6 +184,11 @@ export function SiteHeader() {
             <span className="hidden sm:inline">Crisis Resources</span>
             <span className="sm:hidden">Crisis</span>
           </NavLink>
+
+          <NavLink href="/feedback" icon="💬">
+            Feedback
+          </NavLink>
+
         </nav>
       </div>
     </header>
