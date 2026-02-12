@@ -593,9 +593,14 @@ function ProviderCard({
             href={p.website}
             target="_blank"
             rel="noreferrer"
-            onClick={() =>
-              track("provider_click_website", { providerId: p.id, modalityId })
-            }
+            onClick={() => {
+              track("provider_click_website", { providerId: p.id, modalityId });
+              track("provider_website_clicked", {
+                providerId: p.id,
+                modalityId,
+                source: "card",
+              });
+            }}
           >
             Website →
           </a>
@@ -1426,12 +1431,17 @@ export function ProviderContactCTA({
                                 href={p.website}
                                 target="_blank"
                                 rel="noreferrer"
-                                onClick={() =>
+                                onClick={() => {
                                   track("providers_contact_open_website", {
                                     providerId: p.id,
                                     modalityId,
-                                  })
-                                }
+                                  });
+                                  track("provider_website_clicked", {
+                                    providerId: p.id,
+                                    modalityId,
+                                    source: "contact_modal",
+                                  });
+                                }}
                               >
                                 Website →
                               </a>
@@ -1684,9 +1694,21 @@ export function ProviderList({
             />
           ))
         ) : (
-          <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-700">
-            No providers listed for this therapy style yet. Try another match or
-            check back soon.
+          // ✅ Clean, intentional empty-state when directory has 0 providers
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
+            <div className="text-sm font-medium text-slate-900">
+              Provider directory launching soon
+            </div>
+
+            <div className="mt-2 text-sm text-slate-700">
+              TherapyFit is building a verified Chicagoland provider network.
+              Listings are being reviewed for accuracy and availability.
+            </div>
+
+            <div className="mt-3 text-xs text-slate-500">
+              In the meantime, you can still use the contact scripts above to
+              reach out to providers independently.
+            </div>
           </div>
         )}
       </div>
