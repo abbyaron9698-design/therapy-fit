@@ -84,10 +84,17 @@ function parseCSV(text) {
 const csv = fs.readFileSync(csvPath, "utf8");
 const rows = parseCSV(csv).filter((r) => r.some((c) => String(c).trim().length));
 
-if (rows.length < 2) {
-  throw new Error("providers.csv must include a header row and at least one data row.");
+if (rows.length < 1) {
+  throw new Error("providers.csv must include a header row.");
 }
 
+// ✅ Allow header-only CSV = generate empty provider list
+if (rows.length === 1) {
+  console.warn(
+    "[providers:build] providers.csv has only a header row. Generating an empty provider dataset."
+  );
+  // IMPORTANT: do NOT throw — continue with zero providers
+}
 const header = rows[0].map((h) => String(h).trim());
 const dataRows = rows.slice(1);
 const idx = Object.fromEntries(header.map((h, i) => [h, i]));

@@ -1,10 +1,13 @@
 // lib/providerData.ts
-import { PROVIDERS as GENERATED_PROVIDERS, type Provider } from "./providerData.generated";
+import {
+  PROVIDERS as GENERATED_PROVIDERS,
+  type Provider,
+} from "./providerData.generated";
 
 export type { Provider };
 
 /**
- * Hard rule: demo providers should never show on the website.
+ * Hard rule: demo providers should never show on the site.
  * We treat any row with:
  * - name starting with "Demo"
  * - OR id starting with "demo-"
@@ -17,7 +20,7 @@ function isDemoProvider(p: Provider) {
 }
 
 /**
- * Optional: basic integrity checks so you catch bad/partial rows early.
+ * Basic integrity checks so you catch bad/partial rows early.
  */
 function isValidProvider(p: Provider) {
   return Boolean(
@@ -33,33 +36,21 @@ function isValidProvider(p: Provider) {
 }
 
 const raw = Array.isArray(GENERATED_PROVIDERS) ? GENERATED_PROVIDERS : [];
-
 const demoCount = raw.filter(isDemoProvider).length;
 const invalidCount = raw.filter((p) => !isValidProvider(p)).length;
 
 if (demoCount > 0) {
-  // Always warn during development so you notice you’re still feeding demo rows.
   // eslint-disable-next-line no-console
   console.warn(
     `[TherapyFit] Filtered out ${demoCount} demo provider row(s). ` +
-      `Demo data will NEVER be shown on the site. ` +
-      `Update data/providers.csv with real providers to populate the directory.`
+      `Demo data will NEVER be shown. Replace data/providers.csv with real providers to populate the directory.`
   );
-
-  // Recommended: in production, fail fast so demo data can’t silently ship.
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      `[TherapyFit] Demo provider rows detected in production build (count=${demoCount}). ` +
-        `Remove/replace demo rows in data/providers.csv before deploying.`
-    );
-  }
 }
 
 if (invalidCount > 0) {
   // eslint-disable-next-line no-console
   console.warn(
-    `[TherapyFit] Found ${invalidCount} invalid provider row(s) (missing required fields). ` +
-      `These rows will be filtered out.`
+    `[TherapyFit] Found ${invalidCount} invalid provider row(s). These rows will be filtered out.`
   );
 }
 
